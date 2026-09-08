@@ -84,7 +84,11 @@ def retry_failed_file(failure_file: Path, issue: str) -> tuple[int, int, int]:
     if removed:
         if raw != failure_file.read_bytes():
             print("失败 TXT 在处理期间被外部修改，停止写回"); return len(jobs), completed, 1
-        _write_bytes(failure_file, (b"\xef\xbb\xbf" if raw.startswith(b"\xef\xbb\xbf") else b"") + "".join(lines[i] for i in sorted(keep)).encode())
+        try:
+            _write_bytes(failure_file, (b"\xef\xbb\xbf" if raw.startswith(b"\xef\xbb\xbf") else b"") + "".join(lines[i] for i in sorted(keep)).encode())
+        except OSError as exc:
+            print(f"成功 TXT 已保存，失败 TXT 仍保留；写入失败：{exc}")
+            return len(jobs), completed, 1
     remaining = sum(1 for i in keep if lines[i].strip())
     status = 0 if remaining == 0 else 1
     print(f"定向重抓：{len(jobs)} 个，成功：{completed} 个，仍失败：{remaining} 个，缓存：未修改")
@@ -99,4 +103,9 @@ def main() -> int:
     with exclusive_run_lock(Path(crawler.SCRIPT_DIR) / ".crawler-and-duplicates.lock"):
         return retry_failed_file(crawler.RESULTS_DIR / f"{a.issue}期-杀数字-失败.txt", str(a.issue))[2]
 
-if __name__ == "__main__": raise SystemExit(main())
+if __name__ == "__main__":
+    try: raise SystemExit(main())
+    except RuntimeError as exc:
+        print(f"锁或运行错误：{exc}"); raise SystemExit(2)
+    except OSError as exc:
+        print(f"文件读写错误：{exc}"); raise SystemExit(2)
