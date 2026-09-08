@@ -9,7 +9,7 @@ import crawler
 from kill_numbers.infrastructure.file_store import atomic_write_text
 from run_lock import exclusive_run_lock
 
-LINE = re.compile(r"^(?P<name>.+?)\s+(?P<region>top|bottom)\s+(?P<url>https?://\S+)\s+原因：.*$")
+LINE = re.compile(r"^(?:\[[^]]+\]\s+)?(?P<name>.+?)\s+(?:(?P<region>top|bottom)\s+)?(?P<url>https?://\S+)\s+.*$")
 
 
 def retry_failed_file(failure_file: Path, issue: str) -> tuple[int, int]:
@@ -47,7 +47,8 @@ def retry_failed_file(failure_file: Path, issue: str) -> tuple[int, int]:
             if line not in old:
                 old.append(line)
         atomic_write_text(result_file, "\n".join(old) + "\n")
-    atomic_write_text(failure_file, "\n".join(lines[i] for i in sorted(keep)) + ("\n" if keep else ""))
+    if len(keep) < len(lines):
+        atomic_write_text(failure_file, "\n".join(lines[i].rstrip("\r\n") for i in sorted(keep)) + ("\n" if keep else ""))
     return len(selected), len(successes)
 
 
@@ -57,11 +58,12 @@ def main() -> int:
     args = parser.parse_args()
     issue = str(args.issue)
     failure_file = crawler.RESULTS_DIR / f"{issue}期-杀数字-失败.txt"
-    with exclusive_run_lock(Path(crawler.BASE_DIR) / ".crawler-and-duplicates.lock"):
+    with exclusive_run_lock(Path(crawler.SCRIPT_DIR) / ".crawler-and-duplicates.lock"):
         selected, succeeded = retry_failed_file(failure_file, issue)
     print(f"定向重抓：{selected} 个，成功：{succeeded} 个，缓存：未修改")
-    return 0
+    return 0 if selected and succeeded == selected else (1 if selected else 2)
 
 
 if __name__ == "__main__":
     raise SystemExit(main())
+
