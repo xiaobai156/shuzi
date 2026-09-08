@@ -37,13 +37,13 @@ def retry_failed_file(failure_file: Path, issue: str) -> tuple[int, int, int]:
         found = [t for t in targets if t.get("enabled", True) and str(t.get("name", "")).strip() == m["name"].strip() and str(t.get("url", "")).strip() == m["url"].strip()]
         if m["region"]: found = [t for t in found if crawler.normalize_region(t.get("region")) == m["region"]]
         if len(found) == 1:
-            key = (found[0]["name"], found[0]["url"])
+            key = (found[0]["name"], found[0]["url"], crawler.normalize_region(found[0].get("region")))
             if key in jobs: jobs[key][0].append(i)
             else: jobs[key] = ([i], found[0])
         else:
             if original.strip(): unmatched += 1
     if not jobs: print("没有可重抓的失败站点"); return 0, 0, 2 if unmatched else 0
-    keep = set(range(len(lines))); completed = 0; removed = False; original_debug = crawler.save_debug_page
+    keep = set(range(len(lines))); completed = 0; success_count = 0; removed = False; original_debug = crawler.save_debug_page
     crawler.save_debug_page = lambda *a, **k: None
     try:
         for indexes, target in jobs.values():
