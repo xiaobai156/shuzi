@@ -1,3 +1,4 @@
+import hashlib
 import json
 from pathlib import Path
 
@@ -20,6 +21,13 @@ def test_golden_manifest_matches_current_target_inventory():
     assert len(all_targets) == golden["total_target_count"]
     assert len(active_targets) == golden["active_target_count"]
     assert set(golden["results"]).issubset({target["name"] for target in active_targets})
+    for filename, expected_hash in golden["source_hashes"].items():
+        if filename == "recent_10_cache.json":
+            continue  # runtime cache is intentionally mutable and ignored by git
+        actual_hash = hashlib.sha256(
+            (crawler.SCRIPT_DIR / filename).read_bytes()
+        ).hexdigest().upper()
+        assert actual_hash == expected_hash
 
 
 def test_identity_article_golden_rows_keep_original_order():
