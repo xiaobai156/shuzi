@@ -28,7 +28,7 @@ def retry_failed_file(failure_file: Path, issue: str) -> tuple[int, int, int]:
     except UnicodeDecodeError:
         print("失败 TXT 编码错误"); return 0, 0, 2
     lines = text.splitlines(keepends=True)
-    targets = crawler.load_targets(); jobs = {}; unmatched = 0; failed_records = 0
+    targets = crawler.load_targets(); jobs = {}; unmatched = 0
     for i, original in enumerate(lines):
         m = LINE.match(original.rstrip("\r\n"))
         if not m:
