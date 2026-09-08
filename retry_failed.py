@@ -8,9 +8,13 @@ from run_lock import exclusive_run_lock
 
 def _write_bytes(path: Path, data: bytes) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    with tempfile.NamedTemporaryFile(dir=path.parent, delete=False) as f:
-        tmp = f.name; f.write(data); f.flush(); os.fsync(f.fileno())
-    os.replace(tmp, path)
+    tmp = None
+    try:
+        with tempfile.NamedTemporaryFile(dir=path.parent, delete=False) as f:
+            tmp = f.name; f.write(data); f.flush(); os.fsync(f.fileno())
+        os.replace(tmp, path); tmp = None
+    finally:
+        if tmp: Path(tmp).unlink(missing_ok=True)
 
 LINE = re.compile(r"^(?:\[[^]]+\]\s+)?(?P<name>.+?)\s+(?:(?P<region>top|bottom)\s+)?(?P<url>https?://\S+)\s+.*$")
 
@@ -27,13 +31,14 @@ def retry_failed_file(failure_file: Path, issue: str) -> tuple[int, int, int]:
             continue
         found = [t for t in targets if t.get("enabled", True) and str(t.get("name", "")).strip() == m["name"].strip() and str(t.get("url", "")).strip() == m["url"].strip()]
         if m["region"]: found = [t for t in found if crawler.normalize_region(t.get("region")) == m["region"]]
-        if len(found) == 1: jobs.setdefault((found[0]["name"], found[0]["url"]), (i, found[0]))
+        if len(found) == 1:
+            key = (found[0]["name"], found[0]["url"])
+            if key in jobs: jobs[key][0].append(i)
+            else: jobs[key] = ([i], found[0])
         else:
             if original.strip(): unmatched += 1
-    for key, (index, target) in list(jobs.items()):
-        jobs[key] = (list(i for i, line in enumerate(lines) if LINE.match(line.rstrip("\r\n")) and target["url"] in line), target)
     if not jobs: print("没有可重抓的失败站点"); return 0, 0, 2 if unmatched else 0
-    keep = set(range(len(lines))); success_count = 0; original_debug = crawler.save_debug_page
+    keep = set(range(len(lines))); success_count = 0; completed = 0; original_debug = crawler.save_debug_page
     crawler.save_debug_page = lambda *a, **k: None
     try:
         for indexes, target in jobs.values():
@@ -49,18 +54,18 @@ def retry_failed_file(failure_file: Path, issue: str) -> tuple[int, int, int]:
                     if other: print(f"同名号码冲突，保留失败：{result.name}"); conflict = True; continue
                     if line not in old: old.append(line); success_count += 1
                 if not conflict:
-                    new = "\n".join(old) + "\n"
-                    if new != (result_file.read_text(encoding="utf-8-sig") + "\n" if result_file.exists() else ""):
-                        _write_bytes(result_file, (b"\xef\xbb\xbf" if result_file.exists() and result_file.read_bytes().startswith(b"\xef\xbb\xbf") else b"") + new.encode())
+                    if success_count:
+                        _write_bytes(result_file, (b"\xef\xbb\xbf" if result_file.exists() and result_file.read_bytes().startswith(b"\xef\xbb\xbf") else b"") + ("\n".join(old) + "\n").encode())
                     for index in indexes: keep.discard(index)
-                    failed_records += 1
+                    completed += 1
             except Exception as exc: print(f"重抓失败：{target.get('name')}：{exc}")
     finally: crawler.save_debug_page = original_debug
     if failed_records:
         prefix = "\ufeff" if raw.startswith(b"\xef\xbb\xbf") else ""
         _write_bytes(failure_file, prefix.encode() + "".join(lines[i] for i in sorted(keep)).encode())
-    status = 0 if not failed_records and unmatched == 0 else 1
-    print(f"定向重抓：{len(jobs)} 个，成功：{failed_records} 个，仍失败：{unmatched + len(jobs) - failed_records} 个，缓存：未修改")
+    remaining = sum(1 for i in keep if lines[i].strip())
+    status = 0 if remaining == 0 else 1
+    print(f"定向重抓：{len(jobs)} 个，成功：{completed} 个，仍失败：{remaining + unmatched} 个，缓存：未修改")
     return len(jobs), success_count, status
 
 def main() -> int:
