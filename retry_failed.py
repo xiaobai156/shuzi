@@ -28,6 +28,14 @@ def retry_failed_file(failure_file: Path, issue: str) -> tuple[int, int, int]:
     except UnicodeDecodeError:
         print("失败 TXT 编码错误"); return 0, 0, 2
     lines = text.splitlines(keepends=True)
+    # 失败记录从站点行开始，到下一个站点行结束；续行随原记录保留/删除。
+    blocks = []
+    for i, line in enumerate(lines):
+        if LINE.match(line.rstrip("\r\n")): blocks.append(i)
+    block_for = {}
+    for n, start in enumerate(blocks):
+        end = blocks[n + 1] if n + 1 < len(blocks) else len(lines)
+        for i in range(start, end): block_for[i] = list(range(start, end))
     targets = crawler.load_targets(); jobs = {}; unmatched = 0
     for i, original in enumerate(lines):
         m = LINE.match(original.rstrip("\r\n"))
@@ -38,10 +46,11 @@ def retry_failed_file(failure_file: Path, issue: str) -> tuple[int, int, int]:
         if m["region"]: found = [t for t in found if crawler.normalize_region(t.get("region")) == m["region"]]
         if len(found) == 1:
             key = (found[0]["name"], found[0]["url"], crawler.normalize_region(found[0].get("region")))
-            if key in jobs: jobs[key][0].append(i)
-            else: jobs[key] = ([i], found[0])
+            indexes = block_for.get(i, [i])
+            if key in jobs: jobs[key][0].extend(x for x in indexes if x not in jobs[key][0])
+            else: jobs[key] = (indexes, found[0])
         else:
-            if original.strip(): unmatched += 1
+            if original.strip() and i not in block_for: unmatched += 1
     if not jobs: print("没有可重抓的失败站点"); return 0, 0, 2 if unmatched else 0
     keep = set(range(len(lines))); completed = 0; success_count = 0; removed = False; original_debug = crawler.save_debug_page
     crawler.save_debug_page = lambda *a, **k: None
