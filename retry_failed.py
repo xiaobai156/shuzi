@@ -82,7 +82,10 @@ def retry_failed_file(failure_file: Path, issue: str) -> tuple[int, int, int]:
     return len(jobs), success_count, status
 
 def main() -> int:
-    p = argparse.ArgumentParser(description="只重抓失败TXT中的站点"); p.add_argument("issue", type=int); a = p.parse_args()
+    p = argparse.ArgumentParser(description="只重抓失败TXT中的站点"); p.add_argument("issue", type=int, nargs="?"); a = p.parse_args()
+    if a.issue is None:
+        try: a.issue = int(input("请输入期数：").strip())
+        except (ValueError, EOFError): p.error("期数必须是正整数")
     if a.issue < 1: p.error("期数必须是正整数")
     with exclusive_run_lock(Path(crawler.SCRIPT_DIR) / ".crawler-and-duplicates.lock"):
         return retry_failed_file(crawler.RESULTS_DIR / f"{a.issue}期-杀数字-失败.txt", str(a.issue))[2]
