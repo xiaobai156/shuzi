@@ -19,9 +19,14 @@ def _write_bytes(path: Path, data: bytes) -> None:
 LINE = re.compile(r"^(?:\[[^]]+\]\s+)?(?P<name>.+?)\s+(?:(?P<region>top|bottom)\s+)?(?P<url>https?://\S+)\s+.*$")
 
 def retry_failed_file(failure_file: Path, issue: str) -> tuple[int, int, int]:
+    expected = re.search(r"(\d+)期-杀数字-失败\.txt$", failure_file.name)
+    if not expected or expected.group(1) != str(issue):
+        print("失败文件与期数不一致"); return 0, 0, 2
     raw = failure_file.read_bytes() if failure_file.exists() else None
     if raw is None: print(f"失败文件不存在：{failure_file}"); return 0, 0, 2
-    text = raw.decode("utf-8-sig")
+    try: text = raw.decode("utf-8-sig")
+    except UnicodeDecodeError:
+        print("失败 TXT 编码错误"); return 0, 0, 2
     lines = text.splitlines(keepends=True)
     targets = crawler.load_targets(); jobs = {}; unmatched = 0; failed_records = 0
     for i, original in enumerate(lines):
@@ -38,13 +43,15 @@ def retry_failed_file(failure_file: Path, issue: str) -> tuple[int, int, int]:
         else:
             if original.strip(): unmatched += 1
     if not jobs: print("没有可重抓的失败站点"); return 0, 0, 2 if unmatched else 0
-    keep = set(range(len(lines))); success_count = 0; completed = 0; removed = False; original_debug = crawler.save_debug_page
+    keep = set(range(len(lines))); completed = 0; removed = False; original_debug = crawler.save_debug_page
     crawler.save_debug_page = lambda *a, **k: None
     try:
         for indexes, target in jobs.values():
             try:
                 results, failure = crawler.crawl_one(target, [issue])
-                if failure or not results: continue
+                if failure or not results:
+                    if failure: print(f"[{target.get('name')}] 本轮失败：{failure.reason}")
+                    continue
                 result_file = crawler.RESULTS_DIR / f"{issue}期-杀数字-成功.txt"
                 old_bytes = result_file.read_bytes() if result_file.exists() else b""
                 old = old_bytes.decode("utf-8-sig").splitlines() if old_bytes else []
@@ -66,6 +73,8 @@ def retry_failed_file(failure_file: Path, issue: str) -> tuple[int, int, int]:
             except Exception as exc: print(f"重抓失败：{target.get('name')}：{exc}")
     finally: crawler.save_debug_page = original_debug
     if removed:
+        if raw != failure_file.read_bytes():
+            print("失败 TXT 在处理期间被外部修改，停止写回"); return len(jobs), completed, 1
         _write_bytes(failure_file, (b"\xef\xbb\xbf" if raw.startswith(b"\xef\xbb\xbf") else b"") + "".join(lines[i] for i in sorted(keep)).encode())
     remaining = sum(1 for i in keep if lines[i].strip())
     status = 0 if remaining == 0 else 1
