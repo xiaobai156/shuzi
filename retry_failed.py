@@ -38,7 +38,7 @@ def retry_failed_file(failure_file: Path, issue: str) -> tuple[int, int, int]:
         else:
             if original.strip(): unmatched += 1
     if not jobs: print("没有可重抓的失败站点"); return 0, 0, 2 if unmatched else 0
-    keep = set(range(len(lines))); success_count = 0; completed = 0; original_debug = crawler.save_debug_page
+    keep = set(range(len(lines))); success_count = 0; completed = 0; removed = False; original_debug = crawler.save_debug_page
     crawler.save_debug_page = lambda *a, **k: None
     try:
         for indexes, target in jobs.values():
@@ -46,26 +46,30 @@ def retry_failed_file(failure_file: Path, issue: str) -> tuple[int, int, int]:
                 results, failure = crawler.crawl_one(target, [issue])
                 if failure or not results: continue
                 result_file = crawler.RESULTS_DIR / f"{issue}期-杀数字-成功.txt"
-                old = result_file.read_text(encoding="utf-8-sig").splitlines() if result_file.exists() else []
+                old_bytes = result_file.read_bytes() if result_file.exists() else b""
+                old = old_bytes.decode("utf-8-sig").splitlines() if old_bytes else []
                 conflict = False
+                added = []
                 for result in crawler.dedupe_results(results):
                     line = f"{','.join(result.numbers)} {result.name}"
                     other = [x for x in old if x.endswith(f" {result.name}") and x != line]
                     if other: print(f"同名号码冲突，保留失败：{result.name}"); conflict = True; continue
-                    if line not in old: old.append(line); success_count += 1
+                    if line not in old: old.append(line); added.append(line)
                 if not conflict:
-                    if success_count:
-                        _write_bytes(result_file, (b"\xef\xbb\xbf" if result_file.exists() and result_file.read_bytes().startswith(b"\xef\xbb\xbf") else b"") + ("\n".join(old) + "\n").encode())
+                    if added:
+                        ending = b"\r\n" if b"\r\n" in old_bytes else b"\n"
+                        _write_bytes(result_file, old_bytes + ending.join(x.encode() for x in added) + ending)
+                    success_count += 1
                     for index in indexes: keep.discard(index)
+                    removed = True
                     completed += 1
             except Exception as exc: print(f"重抓失败：{target.get('name')}：{exc}")
     finally: crawler.save_debug_page = original_debug
-    if failed_records:
-        prefix = "\ufeff" if raw.startswith(b"\xef\xbb\xbf") else ""
-        _write_bytes(failure_file, prefix.encode() + "".join(lines[i] for i in sorted(keep)).encode())
+    if removed:
+        _write_bytes(failure_file, (b"\xef\xbb\xbf" if raw.startswith(b"\xef\xbb\xbf") else b"") + "".join(lines[i] for i in sorted(keep)).encode())
     remaining = sum(1 for i in keep if lines[i].strip())
     status = 0 if remaining == 0 else 1
-    print(f"定向重抓：{len(jobs)} 个，成功：{completed} 个，仍失败：{remaining + unmatched} 个，缓存：未修改")
+    print(f"定向重抓：{len(jobs)} 个，成功：{completed} 个，仍失败：{remaining} 个，缓存：未修改")
     return len(jobs), success_count, status
 
 def main() -> int:
