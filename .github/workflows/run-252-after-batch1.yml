@@ -1,0 +1,53 @@
+name: Run live 252 after batch1
+
+on:
+  push:
+    branches:
+      - run/252-after-batch1-20260910
+
+permissions:
+  contents: read
+
+jobs:
+  crawl:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      PYTHONUTF8: '1'
+      SHUZI_RESULTS_DIR: /tmp/shuzi-results
+      SHUZI_BROWSER_CONCURRENCY: '2'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: run/252-after-batch1-20260910
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install Chromium
+        run: |
+          python -m pip install playwright
+          python -m playwright install chromium
+      - name: Live 252 crawl
+        shell: bash
+        run: |
+          mkdir -p "$SHUZI_RESULTS_DIR"
+          set +e
+          python crawler.py --issues 252 --workers 16 --no-cache-update
+          code=$?
+          set -e
+          echo "CRAWL_EXIT=$code"
+          python - <<'PY'
+          import os
+          from pathlib import Path
+          root=Path(os.environ['SHUZI_RESULTS_DIR'])
+          for name in ['252期-杀数字-成功.txt','252期-杀数字-失败.txt','252期报告.txt']:
+              p=root/name
+              if p.exists():
+                  print('\n###',name)
+                  print(p.read_text(encoding='utf-8-sig',errors='replace'))
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: live252-after-batch1
+          path: /tmp/shuzi-results
+          retention-days: 7
