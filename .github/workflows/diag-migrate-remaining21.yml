@@ -1,4 +1,4 @@
-name: Diagnose remaining21 migrations
+name: Diagnose remaining21 browser migrations
 
 on:
   push:
@@ -19,116 +19,89 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-      - name: Inspect landing data and same-site indexes
+      - name: Install Chromium
+        run: |
+          python -m pip install playwright
+          python -m playwright install chromium
+      - name: Inspect browser-rendered same-site indexes
         shell: bash
         run: |
           python - <<'PY'
           import json, re
-          from urllib.parse import urlparse, parse_qs, quote, urljoin
+          from urllib.parse import urlparse, parse_qs, urljoin
+          from playwright.sync_api import sync_playwright
           import crawler
-          from kill_numbers.acquisition.policy import target_policy
-          from kill_numbers.acquisition.strategies.admin_article import decode_possible_base64
-          from kill_numbers.acquisition.strategies.linked_pages import topic_links
-          from kill_numbers.acquisition.documents import parseable_documents
-          from kill_numbers.text_utils import normalize_keyword, html_to_text, origin
+          from kill_numbers.text_utils import normalize_keyword, origin
 
           targets={t['name']:t for t in crawler.load_targets()}
-
-          def issue252(text):
-              return bool(re.search(r'(?<!\\d)0?252\\s*期(?!\\d)', text or ''))
-
-          def walk(value,path='$'):
-              if isinstance(value,dict):
-                  yield path,value
-                  for k,v in value.items():
-                      yield from walk(v,f'{path}.{k}')
-              elif isinstance(value,list):
-                  for i,v in enumerate(value):
-                      yield from walk(v,f'{path}[{i}]')
-
+          sources={}
           dynamic=['至富财运','冰雨蝴蝶','福星金牌','金宝神皇','港澳爆庄','好料见证','你来关注']
           for name in dynamic:
               t=targets[name]
-              print(f'\\n=== LANDING {name} ===')
               parsed=urlparse(t['url'])
               site=(parse_qs(parsed.query).get('url') or [''])[0]
-              landing=f'{origin(t["url"])}/api/proxy/landing-page-data?url={quote(site)}'
-              print('LANDING_URL',landing)
-              try:
-                  with target_policy(t,['252']):
-                      data=crawler.fetch_json(landing)
-              except Exception as exc:
-                  print('LANDING_ERROR',type(exc).__name__,exc)
-                  continue
-              tokens=[t.get('article_identity'),t.get('anchor'),t.get('name')]
-              tokens=[normalize_keyword(str(x)) for x in tokens if x]
-              identity=[]; exact=[]; issueobjs=[]
-              for path,obj in walk(data):
-                  if not isinstance(obj,dict): continue
-                  author=str(obj.get('authorNickname') or obj.get('author') or '')
-                  title=decode_possible_base64(str(obj.get('title') or ''))
-                  body=decode_possible_base64(str(obj.get('html') or obj.get('content') or ''))
-                  combined='\\n'.join([author,title,body])
-                  norm=normalize_keyword(combined)
-                  ident=any(tok and tok in norm for tok in tokens)
-                  has252=issue252(combined)
-                  if has252: issueobjs.append((path,obj.get('id'),author,title))
-                  if ident:
-                      rec=(path,obj.get('id'),author,title,has252,body)
-                      identity.append(rec)
-                      if has252: exact.append(rec)
-              print('IDENTITY_OBJECTS',len(identity),'EXACT_IDENTITY_252',len(exact),'ANY_252_OBJECTS',len(issueobjs))
-              for path,oid,author,title,has252,body in exact[:10]:
-                  pos=body.find('252')
-                  snip=re.sub(r'\\s+',' ',body[max(0,pos-160):pos+700]) if pos>=0 else ''
-                  print('EXACT',path,'ID',oid,'AUTHOR',repr(author),'TITLE',repr(title),'SNIP',repr(snip))
-              if not exact:
-                  for path,oid,author,title,has252,body in identity[:6]:
-                      print('IDENTITY_ONLY',path,'ID',oid,'AUTHOR',repr(author),'TITLE',repr(title),'HAS252',has252)
-                  for item in issueobjs[:6]:
-                      print('252_OTHER',item)
-
-          forum_roots={
+              sources[name]=[f'{origin(t["url"])}/?url={site}', origin(t['url'])+'/']
+          sources.update({
               '博彩兵书':['https://szfzml.mfuw8-bnsfa-gdaxhk.xyz/'],
               '寿比南山':['https://szfzml.mfuw8-bnsfa-gdaxhk.xyz/'],
               '弦无虚发':['https://szfzml.mfuw8-bnsfa-gdaxhk.xyz/'],
               '迎着尾王':['https://8818.www73261a.com/'],
               '过眼云烟':['https://hl.90216a.com/'],
-              '春蚓秋蛇':['https://1214.775486.xyz/','https://1214.775486.xyz/bbs/'],
-              '实至名归':['https://5ipaulfv56.1081085bbs1.shop/','https://5ipaulfv56.1081085bbs1.shop/bbs/'],
-          }
-          identity_override={
+              '春蚓秋蛇':['https://1214.775486.xyz/bbs/'],
+              '实至名归':['https://5ipaulfv56.1081085bbs1.shop/bbs/'],
+          })
+          overrides={
               '迎着尾王':['赢者为王','迎着尾王'],
               '过眼云烟':['过往云烟','过眼云烟'],
           }
-          for name,roots in forum_roots.items():
-              t=targets[name]
-              keys=identity_override.get(name,[name])
-              keys.extend([str(x) for x in ([t.get('anchor')] if t.get('anchor') else [])])
-              nk=[normalize_keyword(x) for x in keys if x]
-              print(f'\\n=== INDEX {name} ===')
-              seen=set()
-              for root in roots:
-                  try:
-                      with target_policy({**t,'url':root},['252']):
-                          page_name,docs=crawler.discover_static_documents(root)
-                  except Exception as exc:
-                      print('ROOT_ERROR',root,type(exc).__name__,exc); continue
-                  print('ROOT',root,'NAME',page_name,'DOCS',[(d.kind,d.url,d.priority) for d in parseable_documents(docs)])
-                  for doc in parseable_documents(docs):
-                      text=html_to_text(doc.content)
-                      norm=normalize_keyword(text)
-                      for key in nk:
-                          if key and key in norm:
-                              idx=norm.find(key)
-                              print('TEXT_HIT',doc.kind,doc.url,'KEY',key,'HAS252',issue252(text))
-                              break
-                      for href,label in topic_links(doc.content):
-                          nlabel=normalize_keyword(label)
-                          if any(key and key in nlabel for key in nk):
-                              absolute=urljoin(doc.url,href)
-                              sig=(absolute,label)
-                              if sig in seen: continue
-                              seen.add(sig)
-                              print('LINK',absolute,'LABEL',repr(' '.join(label.split())),'LABEL252',issue252(label))
+
+          def has252(text):
+              return bool(re.search(r'(?<!\d)0?252\s*期(?!\d)',text or ''))
+
+          with sync_playwright() as p:
+              browser=p.chromium.launch(headless=True)
+              context=browser.new_context(ignore_https_errors=False)
+              page=context.new_page()
+              page.set_default_timeout(10000)
+              for name,urls in sources.items():
+                  t=targets[name]
+                  keys=overrides.get(name,[name])[:]
+                  for value in [t.get('article_identity'),t.get('anchor')]:
+                      if value:
+                          keys.append(str(value))
+                  normalized=[normalize_keyword(k) for k in keys if k]
+                  print(f'\n=== BROWSER {name} ===')
+                  for url in dict.fromkeys(urls):
+                      try:
+                          response=page.goto(url,wait_until='domcontentloaded',timeout=15000)
+                          try:
+                              page.wait_for_load_state('networkidle',timeout=7000)
+                          except Exception:
+                              pass
+                          body=page.locator('body').inner_text(timeout=5000)
+                          final=page.url
+                          title=page.title()
+                          print('PAGE',url,'STATUS',None if response is None else response.status,'FINAL',final,'TITLE',repr(title),'LEN',len(body),'HAS252',has252(body))
+                          norm=normalize_keyword(body)
+                          for key in normalized:
+                              if key and key in norm:
+                                  print('BODY_HIT','KEY',key,'HAS252',has252(body))
+                                  break
+                          links=page.locator('a').evaluate_all("els => els.map(a => [a.href, (a.innerText || a.textContent || '').trim()])")
+                          hits=[]
+                          for href,label in links:
+                              nlabel=normalize_keyword(label)
+                              if any(key and key in nlabel for key in normalized):
+                                  hits.append((href,' '.join(label.split()),has252(label)))
+                          print('LINK_HITS',len(hits))
+                          for hit in hits[:30]:
+                              print('LINK',repr(hit))
+                          # Also report links explicitly carrying 252 when identity may be in a parent card.
+                          issue_links=[(href,' '.join(label.split())) for href,label in links if has252(label)]
+                          print('ISSUE252_LINKS',len(issue_links))
+                          for item in issue_links[:20]:
+                              print('252LINK',repr(item))
+                      except Exception as exc:
+                          print('PAGE_ERROR',url,type(exc).__name__,exc)
+              context.close(); browser.close()
           PY
