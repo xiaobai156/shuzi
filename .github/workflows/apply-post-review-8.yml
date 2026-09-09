@@ -32,6 +32,16 @@ jobs:
           echo '0cc43440b15e75b8824379c0f41d5db27c5233316e3f3e1027605ce1b67adb58  /tmp/post-review.patch' | sha256sum -c -
           git apply --check --binary /tmp/post-review.patch
           git apply --binary /tmp/post-review.patch
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('tests/test_browser_smoke.py')
+          text = path.read_text(encoding='utf-8')
+          old = ".join('\\n');"
+          new = ".join('\\\\n');"
+          if text.count(old) != 2:
+              raise SystemExit(f'expected two delayed-fixture joins, got {text.count(old)}')
+          path.write_text(text.replace(old, new), encoding='utf-8')
+          PY
 
       - name: Install test dependencies
         run: python -m pip install -r requirements-test.txt
