@@ -30,10 +30,9 @@ jobs:
 
       - name: Apply reviewed patch
         run: |
-          base64 -d .github/covered-fragment.patch.b64 > /tmp/covered-fragment.patch
-          sha256sum /tmp/covered-fragment.patch
-          git apply --check /tmp/covered-fragment.patch
-          git apply /tmp/covered-fragment.patch
+          echo 'dc310f6f4043be8e216c2addd0860f0d534ee08fccde3d670c2174a07f58d1d1  .github/covered-fragment.patch' | sha256sum -c -
+          git apply --check .github/covered-fragment.patch
+          git apply .github/covered-fragment.patch
 
       - name: Install test dependencies
         run: python -m pip install -r requirements-test.txt
@@ -92,6 +91,7 @@ jobs:
 
       - name: Publish verified repair commit
         run: |
+          rm -f .github/covered-fragment.patch
           rm -f .github/covered-fragment.patch.b64
           rm -f .github/workflows/export-covered-fragment-source.yml
           rm -f .github/workflows/verify-covered-fragment-fix.yml
