@@ -1,0 +1,105 @@
+name: Verify live252 content-script fix
+
+on:
+  push:
+    branches:
+      - fix/live252-script-content-20260909
+
+permissions:
+  contents: write
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      PYTHONUTF8: '1'
+      SHUZI_RESULTS_DIR: /tmp/live252-results
+      SHUZI_BROWSER_CONCURRENCY: '2'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/live252-script-content-20260909
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Apply reviewed patch
+        run: |
+          base64 -d .github/live252-scriptfix/payload.b64 > /tmp/fix.patch.xz
+          echo '00a678b249ce30479ee6e8bdaccd7c3b3558ed01f25b79706ea5a217608a5e6b  /tmp/fix.patch.xz' | sha256sum -c -
+          xz -dc /tmp/fix.patch.xz > /tmp/fix.patch
+          echo 'fb526e2fa591e95212c817b3a6ed6e919858a552d5de0f8e632c959b79d14af2  /tmp/fix.patch' | sha256sum -c -
+          git apply --check --binary /tmp/fix.patch
+          git apply --binary /tmp/fix.patch
+          git diff --check
+      - name: Install tests
+        run: python -m pip install -r requirements-test.txt
+      - name: Compile and regress
+        run: |
+          python -m compileall -q crawler.py check_duplicates.py retry_failed.py run_crawler_prompt.py run_crawler_multi_prompt.py kill_numbers tests test_*.py
+          python -m pytest -q --junitxml=/tmp/pytest.xml
+      - name: Install Chromium
+        run: |
+          python -m pip install playwright
+          python -m playwright install --with-deps chromium
+      - name: Real Chromium tests
+        env:
+          RUN_BROWSER_SMOKE: '1'
+        run: python -m pytest -q tests/test_browser_smoke.py --junitxml=/tmp/browser.xml
+      - name: Live 252 validation
+        shell: bash
+        run: |
+          rm -rf "$SHUZI_RESULTS_DIR" debug_pages
+          mkdir -p "$SHUZI_RESULTS_DIR"
+          set +e
+          python crawler.py --issues 252 --workers 16 --no-cache-update
+          code=$?
+          set -e
+          echo "LIVE_EXIT=$code" >> "$GITHUB_ENV"
+      - name: Summarize live 252
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json, os, re
+          from pathlib import Path
+          import crawler
+          root=Path(os.environ['SHUZI_RESULTS_DIR'])
+          success=root/'252期-杀数字-成功.txt'
+          failure=root/'252期-杀数字-失败.txt'
+          successes=[line for line in success.read_text(encoding='utf-8-sig',errors='replace').splitlines() if line.strip()] if success.exists() else []
+          pattern=re.compile(r'^(?:\[[^]]+\]\s+)?(?P<name>.+?)\s+(?:(?P<region>top|bottom)\s+)?(?P<url>https?://\S+)\s+(?P<reason>.*)$')
+          failures=[]
+          if failure.exists():
+              for line in failure.read_text(encoding='utf-8-sig',errors='replace').splitlines():
+                  m=pattern.match(line.strip())
+                  if m: failures.append(m.groupdict())
+          value={'active':len(crawler.load_targets()),'success':len(successes),'failure':len(failures),'exit':int(os.environ.get('LIVE_EXIT','-1')),'failures':failures}
+          (root/'summary.json').write_text(json.dumps(value,ensure_ascii=False,indent=2),encoding='utf-8')
+          print(f"LIVE252_ACTIVE={value['active']}")
+          print(f"LIVE252_SUCCESS={value['success']}")
+          print(f"LIVE252_FAILURE={value['failure']}")
+          print(f"LIVE252_EXIT={value['exit']}")
+          PY
+      - name: Publish verified branch commit
+        run: |
+          rm -rf .github/live252-scriptfix
+          rm -f .github/workflows/verify-live252-scriptfix.yml
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          git diff --cached --check
+          git commit -m 'fix: fetch explicitly referenced public content scripts'
+          git push origin HEAD:fix/live252-script-content-20260909
+      - name: Upload evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: live252-scriptfix-evidence
+          path: |
+            /tmp/pytest.xml
+            /tmp/browser.xml
+            /tmp/live252-results
+            debug_pages
+          if-no-files-found: warn
+          retention-days: 2
