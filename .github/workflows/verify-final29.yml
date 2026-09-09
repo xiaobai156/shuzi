@@ -28,8 +28,8 @@ jobs:
 
       - name: Apply reviewed repair patch
         run: |
-          cat .github/final29/v3.part* | tr -d '\r\n' | base64 -d | xz -dc > /tmp/final29.patch
-          echo '28839ddfef3d29d1f5df376f04b59eea774afb96ffd15ac0685f8284d04ebe54  /tmp/final29.patch' | sha256sum -c -
+          cat .github/final29/v4.part* | tr -d '\r\n' | base64 -d | xz -dc > /tmp/final29.patch
+          echo 'ca7f2616762d4127a7de7486a24ad8950e6ae1accfd25e8ef1c966f2dc8c6b40  /tmp/final29.patch' | sha256sum -c -
           git apply --check /tmp/final29.patch
           git apply /tmp/final29.patch
           git diff --check
