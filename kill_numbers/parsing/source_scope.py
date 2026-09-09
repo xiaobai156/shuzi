@@ -6,8 +6,51 @@ from kill_numbers.text_utils import normalize_keyword
 from kill_numbers.parsing.errors import NoCandidateError
 
 
+VALID_SOURCE_TYPES = frozenset({
+    "page",
+    "iframe",
+    "decoded_inline",
+    "decoded_script",
+    "external_script",
+    "inline_script",
+    "browser",
+    "admin_article",
+    "configured_api",
+    "dedicated_script",
+    "encoded_page",
+    "user_forum_topic",
+})
+
+
+def source_type_family(document) -> str:
+    """Map concrete SourceDocument kinds to stable configuration families."""
+    kind = str(getattr(document, "kind", "") or "")
+    if kind in {"decoded_script", "decoded_script_stream", "decoded_script_component"}:
+        return "decoded_script"
+    if kind in {"decoded_inline_stream", "decoded_inline_component"}:
+        return "decoded_inline"
+    if kind in {"browser_body", "browser_dom", "browser_decoded"}:
+        return "browser"
+    if kind.startswith("iframe"):
+        return "iframe"
+    return kind
+
+
+def source_type_allowed(target, document) -> bool:
+    allowed = target.get("allowed_source_types") or []
+    if not allowed:
+        return True
+    return source_type_family(document) in set(allowed)
+
+
 def target_for_document(target, document):
     value = dict(target)
+    if target.get("content_class") and document.kind == "browser_body":
+        raise NoCandidateError("正文容器契约需要 browser_dom，纯文本 browser_body 不参与解析")
+    if not source_type_allowed(target, document):
+        raise NoCandidateError(
+            f"来源类型 {source_type_family(document) or document.kind} 不在 allowed_source_types 契约内"
+        )
     pattern = str(target.get("source_url_pattern") or "")
     if pattern:
         if not re.search(pattern, document.url, re.I):

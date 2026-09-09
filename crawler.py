@@ -155,7 +155,7 @@ from kill_numbers.parsing.registry import (
     parse_target_content,
 )
 from kill_numbers.validation.result_validator import validate_issue_map
-from kill_numbers.parsing.source_scope import target_for_document
+from kill_numbers.parsing.source_scope import VALID_SOURCE_TYPES, target_for_document
 from kill_numbers.parsing.errors import (
     CandidateConflictError,
     NoCandidateError,
@@ -194,8 +194,8 @@ from kill_numbers.infrastructure.output_repository import (
 from kill_numbers.infrastructure.target_repository import read_target_data, write_target_data
 
 
-# 默认期数：你也可以运行时用 --issues 119 或 --issues 119,120 指定。
-DEFAULT_ISSUES = "128"
+# 正式入口不提供默认期数；必须显式输入或传入 --issues。
+DEFAULT_ISSUES = ""
 DEFAULT_WORKERS = 8
 DEFAULT_RETRY_PASSES = 1
 RETRY_PASS_WAIT = 12
@@ -251,6 +251,20 @@ def load_targets(path: Path = TARGETS_FILE) -> list[dict]:
             or special_parser or item.get('stop_anchor') or not item.get('anchor')
         ):
             raise ValueError(f"targets.json 第 {index} 条正文容器契约无效")
+        allowed_source_types = item.get("allowed_source_types")
+        if allowed_source_types is not None and (
+            not isinstance(allowed_source_types, list)
+            or not allowed_source_types
+            or any(
+                not isinstance(source_type, str)
+                or source_type not in VALID_SOURCE_TYPES
+                for source_type in allowed_source_types
+            )
+            or len(set(allowed_source_types)) != len(allowed_source_types)
+        ):
+            raise ValueError(
+                f"targets.json 第 {index} 条 allowed_source_types 必须是唯一的受支持来源类型列表"
+            )
         if special_parser is not None and (
             not isinstance(special_parser, str)
             or special_parser not in VALID_SPECIAL_PARSERS
@@ -269,9 +283,15 @@ def load_targets(path: Path = TARGETS_FILE) -> list[dict]:
             raise ValueError("allowed_resource_hosts 必须是明确主机名列表，不能含URL或通配符")
         if "browser_ready_selector" in item and not isinstance(item["browser_ready_selector"], str):
             raise ValueError("browser_ready_selector 必须是字符串")
-        for flag in ("disabled", "allow_ambiguous", "allow_duplicate_numbers", "browser_fallback", "insecure_tls"):
+        for flag in ("disabled", "allow_ambiguous", "allow_duplicate_numbers", "browser", "browser_fallback", "insecure_tls"):
             if flag in item and type(item[flag]) is not bool:
                 raise ValueError(f"targets.json 第 {index} 条 {flag} 必须是布尔值")
+        if "position" in item and item["position"] not in {"first", "last"}:
+            raise ValueError(f"targets.json 第 {index} 条 position 只能是 first 或 last")
+        if item.get("browser") is True and allowed_source_types and "browser" not in allowed_source_types:
+            raise ValueError(
+                f"targets.json 第 {index} 条 browser=true 时 allowed_source_types 必须允许 browser"
+            )
         for field in ("anchor", "stop_anchor"):
             value = item.get(field)
             if value is not None and not (isinstance(value, str) or
@@ -595,47 +615,176 @@ def crawl_qiancai_liangde_page(target: dict) -> tuple[str, str]:
 
 
 
+def _single_issue_from_link_label(label: str) -> str | None:
+    matches = unique_keep_order(
+        normalize_issue(match.group(1))
+        for match in re.finditer(r"(?<!\d)0?(\d{1,3})\s*期(?!\d)", label)
+    )
+    if not matches:
+        return None
+    if len(matches) != 1:
+        raise SourceContractError(f"列表链接同时包含多个期号：{label}")
+    return matches[0]
+
+
+def _ordered_issue_links_from_documents(
+    documents: list[SourceDocument],
+    *,
+    link_keywords: list[str],
+) -> tuple[list[str], dict[str, str]]:
+    """Collect unique period links in source order, rejecting per-period URL conflicts."""
+    candidates: dict[str, list[str]] = {}
+    ordered: list[str] = []
+    parseable = sorted(
+        parseable_documents(documents),
+        key=lambda document: document.priority,
+        reverse=True,
+    )
+    for document in parseable:
+        for href, label in topic_links(document.content):
+            compact = normalize_keyword(label)
+            if not all(normalize_keyword(keyword) in compact for keyword in link_keywords):
+                continue
+            issue = _single_issue_from_link_label(label)
+            if not issue:
+                continue
+            absolute = urljoin(document.url, href)
+            urls = candidates.setdefault(issue, [])
+            if absolute not in urls:
+                urls.append(absolute)
+            if issue not in ordered:
+                ordered.append(issue)
+    conflicts = {issue: urls for issue, urls in candidates.items() if len(urls) > 1}
+    if conflicts:
+        issue, urls = next(iter(conflicts.items()))
+        raise CandidateConflictError(f"{issue}期列表链接候选冲突：{urls}")
+    return ordered, {issue: urls[0] for issue, urls in candidates.items()}
+
+
+def _directional_acquisition_issues(ordered: list[str], target: dict) -> list[str]:
+    if target.get("_history_discovery") is True:
+        window = resolve_candidate_window(target.get("_history_depth"))
+    else:
+        window = resolve_candidate_window(target.get("issue_position_window"))
+    region = normalize_region(target.get("region"))
+    if region == "top":
+        return ordered[:window]
+    if region == "bottom":
+        return ordered[-window:]
+    raise SourceContractError("采集专属列表必须配置 top 或 bottom")
+
+
+def _zuojianzifu_issue_links(target: dict) -> tuple[list[str], dict[str, str]]:
+    _name, documents = discover_static_documents(str(target["url"]))
+    ordered, links = _ordered_issue_links_from_documents(
+        documents,
+        link_keywords=["作茧自缚"],
+    )
+    if not ordered:
+        raise NoCandidateError("作茧自缚列表没有找到任何专属期号链接")
+    return ordered, links
+
+
+def _ttss_issue_links(target: dict) -> tuple[list[str], dict[str, str]]:
+    page_limit = target.get("pagination_limit")
+    if isinstance(page_limit, bool) or not isinstance(page_limit, int) or page_limit <= 0:
+        raise SourceContractError(f"分页上限无效：{page_limit}")
+    next_text = str(target.get("pagination_next_text") or "").strip()
+    link_keywords = [
+        str(keyword).strip()
+        for keyword in (target.get("link_keywords") or [])
+        if str(keyword).strip()
+    ]
+    if not next_text or not link_keywords:
+        raise SourceContractError("分页身份文章历史探测缺少 next_text 或 link_keywords")
+
+    current_url = remove_fragment(str(target["url"]))
+    visited_urls: set[str] = set()
+    ordered: list[str] = []
+    links_by_issue: dict[str, str] = {}
+    for page_number in range(1, page_limit + 1):
+        if current_url in visited_urls:
+            raise SourceContractError(f"分页链接循环：{current_url}")
+        visited_urls.add(current_url)
+        _name, documents = discover_static_documents(current_url)
+        page_issues, page_links = _ordered_issue_links_from_documents(
+            documents,
+            link_keywords=link_keywords,
+        )
+        for issue in page_issues:
+            link = page_links[issue]
+            previous = links_by_issue.get(issue)
+            if previous and previous != link:
+                raise CandidateConflictError(
+                    f"{issue}期专属链接候选冲突（跨分页）：{previous} | {link}"
+                )
+            links_by_issue[issue] = link
+            if issue not in ordered:
+                ordered.append(issue)
+
+        next_candidates: list[str] = []
+        for document in parseable_documents(documents):
+            next_candidates.extend(
+                urljoin(document.url, href)
+                for href, label in topic_links(document.content)
+                if label.strip() == next_text
+            )
+        distinct_next = list(dict.fromkeys(next_candidates))
+        if len(distinct_next) > 1:
+            raise CandidateConflictError(
+                f"第{page_number}页分页下一页链接冲突：{distinct_next}"
+            )
+        if not distinct_next or not distinct_next[0].strip() or distinct_next[0].strip() == "#":
+            break
+        next_url = remove_fragment(urljoin(current_url, distinct_next[0]))
+        if next_url == current_url:
+            break
+        if page_number == page_limit:
+            raise SourceContractError(f"分页超过配置上限 {page_limit}")
+        current_url = next_url
+
+    if not ordered:
+        raise NoCandidateError("分页身份文章列表没有找到任何专属期号链接")
+    return ordered, links_by_issue
+
+
+def _acquisition_issue_links(target: dict) -> tuple[list[str], dict[str, str]]:
+    parser_name = str(target.get("special_parser") or "")
+    if parser_name == "zuojianzifu_link_chain":
+        return _zuojianzifu_issue_links(target)
+    if parser_name == "ttss_paginated_identity_top_10":
+        return _ttss_issue_links(target)
+    raise SourceContractError(f"不支持的采集专属历史探测器：{parser_name}")
+
+
+def available_issues_for_acquisition_target(target: dict) -> list[str]:
+    """Discover only the configured directional window of acquisition-only listings."""
+    ordered, _links = _acquisition_issue_links(target)
+    return _directional_acquisition_issues(ordered, target)
+
+
 def crawl_zuojianzifu_link_chain(
     target: dict,
     issues: list[str],
 ) -> tuple[str, str, dict[str, list[str]], dict[str, SourceDocument]]:
     if not issues:
         raise ValueError("没有指定期数")
-
-    def exact_link_from_documents(
-        documents: list[SourceDocument],
-        issue: str,
-        *keywords: str,
-    ) -> tuple[str, str]:
-        matches = {}
-        issue_pattern = re.compile(rf"(?<!\d)0?{re.escape(normalize_issue(issue))}\s*期(?!\d)")
-        for document in parseable_documents(documents):
-            for href, label in topic_links(document.content):
-                if issue_pattern.search(label) and all(keyword in label for keyword in keywords):
-                    absolute = urljoin(document.url, href)
-                    matches[absolute] = label
-        if len(matches) != 1:
-            raise ValueError(f"{normalize_issue(issue)}期专属链接候选冲突或不存在")
-        return next(iter(matches.items()))
-
-    _listing_name, listing_documents = discover_static_documents(target["url"])
-    article_links = [
-        (
-            normalize_issue(issue),
-            exact_link_from_documents(
-                listing_documents,
-                issue,
-                "作茧自缚",
-            )[0],
+    requested = unique_keep_order(normalize_issue(issue) for issue in issues)
+    ordered, links = _zuojianzifu_issue_links(target)
+    allowed = set(_directional_acquisition_issues(ordered, target))
+    outside = [issue for issue in requested if issue not in allowed]
+    if outside:
+        raise NoCandidateError(
+            "指定期数不在作茧自缚配置方向窗口内："
+            + ",".join(f"{issue}期" for issue in outside)
         )
-        for issue in issues
-    ]
+
     article_names = []
     article_documents: list[SourceDocument] = []
     article_documents_by_issue: dict[str, SourceDocument] = {}
     issue_map: dict[str, list[str]] = {}
-    for normalized_issue, article_href in article_links:
-        article_url = urljoin(target["url"], article_href)
+    for normalized_issue in requested:
+        article_url = links[normalized_issue]
         article_name, documents = discover_static_documents(article_url)
         article_target = dict(target)
         article_target["special_parser"] = ""
@@ -666,99 +815,23 @@ def crawl_ttss_paginated_identity_top_10(
 ) -> tuple[str, str, dict[str, list[str]], dict[str, SourceDocument]]:
     if not issues:
         raise ValueError("没有指定期数")
-
-    requested_issues = unique_keep_order(normalize_issue(issue) for issue in issues)
-    page_limit = target.get("pagination_limit")
-    if isinstance(page_limit, bool) or not isinstance(page_limit, int) or page_limit <= 0:
-        raise ValueError(f"分页上限无效：{page_limit}")
-
-    next_text = str(target.get("pagination_next_text") or "").strip()
-    link_keywords = [
-        normalize_keyword(str(keyword).strip())
-        for keyword in (target.get("link_keywords") or [])
-        if str(keyword).strip()
-    ]
-    if not next_text or not link_keywords:
-        raise ValueError("分页身份文章专属采集缺少 next_text 或 link_keywords")
-
-    current_url = remove_fragment(str(target["url"]))
-    visited_urls: set[str] = set()
-    issue_link_candidates: dict[str, list[str]] = {
-        issue: [] for issue in requested_issues
-    }
-
-    for page_number in range(1, page_limit + 1):
-        if current_url in visited_urls:
-            raise ValueError(f"分页链接循环：{current_url}")
-        visited_urls.add(current_url)
-
-        _listing_name, listing_documents = discover_static_documents(current_url)
-        parseable = parseable_documents(listing_documents)
-        if not parseable:
-            raise ValueError(f"第{page_number}页没有可解析的列表文档")
-
-        next_candidates: list[str] = []
-        for document in parseable:
-            links = topic_links(document.content)
-            for requested_issue in requested_issues:
-                issue_pattern = re.compile(
-                    rf"(?<!\d)0?{re.escape(requested_issue)}\s*期(?!\d)"
-                )
-                matches = [
-                    urljoin(document.url, href)
-                    for href, label in links
-                    if issue_pattern.search(label)
-                    and all(keyword in normalize_keyword(label) for keyword in link_keywords)
-                ]
-                distinct_matches = list(dict.fromkeys(matches))
-                if len(distinct_matches) > 1:
-                    raise ValueError(
-                        f"{requested_issue}期专属链接候选冲突：{distinct_matches}"
-                    )
-                issue_link_candidates[requested_issue].extend(distinct_matches)
-
-            next_candidates.extend(
-                urljoin(document.url, href)
-                for href, label in links
-                if label.strip() == next_text
-            )
-
-        distinct_next = list(dict.fromkeys(next_candidates))
-        if len(distinct_next) > 1:
-            raise ValueError(f"第{page_number}页分页下一页链接冲突：{distinct_next}")
-        if not distinct_next:
-            break
-        next_url = urljoin(current_url, distinct_next[0])
-        if not distinct_next[0].strip() or distinct_next[0].strip() == "#":
-            break
-        if remove_fragment(next_url) == current_url:
-            break
-        if page_number == page_limit:
-            raise ValueError(f"分页超过配置上限 {page_limit}")
-        current_url = remove_fragment(next_url)
-    else:
-        raise ValueError(f"分页未在配置上限 {page_limit} 内结束")
-
-    article_links: dict[str, str] = {}
-    for requested_issue in requested_issues:
-        distinct_links = list(dict.fromkeys(issue_link_candidates[requested_issue]))
-        if len(distinct_links) > 1:
-            raise ValueError(
-                f"{requested_issue}期专属链接候选冲突：{distinct_links}"
-            )
-        if not distinct_links:
-            raise ValueError(
-                f"{requested_issue}期专属链接不唯一或不存在：{distinct_links}"
-            )
-        article_links[requested_issue] = distinct_links[0]
+    requested = unique_keep_order(normalize_issue(issue) for issue in issues)
+    ordered, links = _ttss_issue_links(target)
+    allowed = set(_directional_acquisition_issues(ordered, target))
+    outside = [issue for issue in requested if issue not in allowed]
+    if outside:
+        raise NoCandidateError(
+            "指定期数不在分页身份文章配置方向窗口内："
+            + ",".join(f"{issue}期" for issue in outside)
+        )
 
     article_names: list[str] = []
     article_documents: list[SourceDocument] = []
     article_documents_by_issue: dict[str, SourceDocument] = {}
     issue_map: dict[str, list[str]] = {}
     documents_by_url: dict[str, tuple[str, list[SourceDocument]]] = {}
-    for requested_issue in requested_issues:
-        article_url = urljoin(str(target["url"]), article_links[requested_issue])
+    for requested_issue in requested:
+        article_url = links[requested_issue]
         if article_url not in documents_by_url:
             documents_by_url[article_url] = discover_static_documents(article_url)
         article_name, documents = documents_by_url[article_url]
@@ -1116,6 +1189,16 @@ def fetch_target_documents(
         raise ValueError(
             f"{target.get('special_parser')} 是链式采集专属解析器，不能走通用文档抓取"
         )
+    if target.get("browser") is True:
+        documents = render_page_documents(url)
+        parseable = parseable_documents(documents)
+        if not parseable:
+            raise ValueError("browser=true 但真实 Chromium 没有生成可解析来源")
+        name = extract_name_from_text(
+            parseable[0].content,
+            fallback=urlparse(url).netloc,
+        )
+        return name, documents
     if parse_admin_article_id(url):
         name, content = crawl_admin_article_page(url, target, requested_issues)
         return name, [

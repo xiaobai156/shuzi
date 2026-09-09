@@ -17,12 +17,25 @@ CACHE_VERSION = 2
 
 
 def target_signature(target):
-    fields = ('url', 'count', 'region', 'anchor', 'stop_anchor', 'keywords',
-              'special_parser', 'article_identity', 'source_url_pattern',
-              'source_anchor', 'issue_position_window', 'allow_duplicate_numbers',
-              'api_url', 'article_title_anchor', 'encoding', 'link_keywords',
-              'pagination_limit', 'insecure_tls', 'allowed_resource_hosts')
-    value = {key: target.get(key) for key in fields}
+    # Preserve the legacy hash for targets whose effective contract did not
+    # change, while binding every newly supported acquisition/scope field when
+    # it is explicitly present. This invalidates only the affected site cache.
+    legacy_fields = (
+        'url', 'count', 'region', 'anchor', 'stop_anchor', 'keywords',
+        'special_parser', 'article_identity', 'source_url_pattern',
+        'source_anchor', 'issue_position_window', 'allow_duplicate_numbers',
+        'api_url', 'article_title_anchor', 'encoding', 'link_keywords',
+        'pagination_limit', 'insecure_tls', 'allowed_resource_hosts',
+    )
+    new_contract_fields = (
+        'position', 'pagination_next_text', 'section_id', 'content_class',
+        'allowed_source_types', 'browser', 'browser_ready_selector',
+        'browser_fallback',
+    )
+    value = {key: target.get(key) for key in legacy_fields}
+    value.update(
+        {key: target.get(key) for key in new_contract_fields if key in target}
+    )
     value['url'] = canonical_url(value['url'] or '')
     return hashlib.sha256(json.dumps(value, ensure_ascii=False, sort_keys=True).encode()).hexdigest()
 
