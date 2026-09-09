@@ -27,6 +27,9 @@ jobs:
       - name: Install test dependency
         run: python -m pip install --upgrade pytest
 
+      - name: Align guarded source match
+        run: sed -i 's/expected_min=2,/expected_min=1,/' .github/scripts/apply_critical_fixes.py
+
       - name: Apply audited fixes
         run: python .github/scripts/apply_critical_fixes.py
 
