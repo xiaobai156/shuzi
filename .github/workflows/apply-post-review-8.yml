@@ -1,0 +1,80 @@
+name: Apply and verify post-review fixes
+
+on:
+  push:
+    branches:
+      - fix/accuracy-post-review-8-items-20260909
+
+permissions:
+  contents: write
+
+jobs:
+  apply-verify-publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Check out exact repair branch
+        uses: actions/checkout@v4
+        with:
+          ref: fix/accuracy-post-review-8-items-20260909
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Reconstruct and apply reviewed patch
+        run: |
+          cat .github/post-review/fix.part* | tr -d '\r\n' | base64 -d > /tmp/post-review.patch.xz
+          echo '0c0c808c1e596588425fc1d8409584ba9c080e4c28eccf6e2592e85ff221d17a  /tmp/post-review.patch.xz' | sha256sum -c -
+          xz -dc /tmp/post-review.patch.xz > /tmp/post-review.patch
+          echo '0cc43440b15e75b8824379c0f41d5db27c5233316e3f3e1027605ce1b67adb58  /tmp/post-review.patch' | sha256sum -c -
+          git apply --check --binary /tmp/post-review.patch
+          git apply --binary /tmp/post-review.patch
+
+      - name: Install test dependencies
+        run: python -m pip install -r requirements-test.txt
+
+      - name: Compile source
+        run: python -m compileall -q crawler.py check_duplicates.py retry_failed.py run_crawler_prompt.py run_crawler_multi_prompt.py kill_numbers tests test_*.py
+
+      - name: Check patch whitespace
+        run: git diff --check
+
+      - name: Run full regression suite
+        run: python -m pytest -q --junitxml=pytest-results.xml
+
+      - name: Install real Chromium
+        run: |
+          python -m pip install playwright
+          python -m playwright install --with-deps chromium
+
+      - name: Run real Chromium isolated tests
+        env:
+          RUN_BROWSER_SMOKE: '1'
+        run: python -m pytest -q tests/test_browser_smoke.py --junitxml=browser-results.xml
+
+      - name: Publish verified repair commit
+        run: |
+          rm -rf .github/post-review
+          rm -f .github/workflows/apply-post-review-8.yml
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          git diff --cached --check
+          git commit -m 'fix: close remaining parsing and history gaps'
+          git push origin HEAD:fix/accuracy-post-review-8-items-20260909
+          git archive --format=zip HEAD -o verified-source.zip
+
+      - name: Upload verification evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: post-review-eight-fix-evidence
+          path: |
+            pytest-results.xml
+            browser-results.xml
+            verified-source.zip
+          if-no-files-found: warn
+          retention-days: 7
