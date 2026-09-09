@@ -61,6 +61,8 @@ def test_golden_manifest_matches_current_target_inventory():
             t['anchor'] = '澳门马经论坛[绝杀十码]'
             t['stop_anchor'] = '澳门马经论坛[内部六尾]'
             t['special_parser'] = 'majing_forum_bottom_10'
+        if t['name'] in {'蔡邕救琴', '茂名神码'}:
+            assert t.pop('max_response_bytes') == 10 * 1024 * 1024
     canonical = json.dumps(legacy, ensure_ascii=False, sort_keys=True, separators=(',', ':'))
     # Canonical SHA256 of origin/main cb915d1's original 208 targets.
     assert hashlib.sha256(canonical.encode()).hexdigest() == 'daccdf324f1eb15b7e18f0486bb8cb284c927f939a038b6d3af9156421cadbe8'

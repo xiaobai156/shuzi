@@ -20,6 +20,7 @@ class FetchPolicy:
     expected_count: int | None = None
     history_discovery: bool = False
     history_depth: int = 0
+    max_response_bytes: int | None = None
 
 
 CURRENT_POLICY = ContextVar('fetch_policy', default=FetchPolicy())
@@ -29,6 +30,17 @@ def url_origin(url):
     value = urlsplit(url)
     port = value.port or (443 if value.scheme == 'https' else 80)
     return f'{value.scheme.lower()}://{(value.hostname or "").lower()}:{port}'
+
+
+MAX_TARGET_RESPONSE_BYTES = 16 * 1024 * 1024
+
+
+def configured_response_limit(value):
+    if value is None:
+        return None
+    if type(value) is not int or not (1 <= value <= MAX_TARGET_RESPONSE_BYTES):
+        raise ValueError('max_response_bytes 必须是 1 到 16MiB 之间的整数')
+    return value
 
 
 @contextmanager
@@ -41,6 +53,7 @@ def target_policy(target, issues=()):
     insecure = frozenset((urlsplit(u).hostname or '').lower() for u in urls) if target.get('insecure_tls') is True else frozenset()
     count = target.get('count') if type(target.get('count')) is int else None
     depth = target.get('_history_depth') if type(target.get('_history_depth')) is int else 0
+    max_response_bytes = configured_response_limit(target.get('max_response_bytes'))
     policy = FetchPolicy(
         origins=frozenset(url_origin(u) for u in urls),
         allowed_hosts=hosts,
@@ -53,6 +66,7 @@ def target_policy(target, issues=()):
         expected_count=count,
         history_discovery=target.get('_history_discovery') is True,
         history_depth=depth,
+        max_response_bytes=max_response_bytes,
     )
     token = CURRENT_POLICY.set(policy)
     try:

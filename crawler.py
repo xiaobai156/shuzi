@@ -35,6 +35,7 @@ from kill_numbers.acquisition.http_client import (
     wait_for_host_slot,
 )
 from kill_numbers.acquisition.browser_pool import render_page_documents
+from kill_numbers.acquisition.policy import configured_response_limit
 from kill_numbers.acquisition.documents import (
     discover_static_documents,
     document_debug_text,
@@ -280,6 +281,7 @@ def load_targets(path: Path = TARGETS_FILE) -> list[dict]:
                 f"targets.json 第 {index} 条必须配置合法 region：top/bottom/上/下/顶部/尾部"
             )
         resolve_candidate_window(item.get("issue_position_window"))
+        configured_response_limit(item.get("max_response_bytes"))
         if special_parser in {"zuibaxian_top7", "fengwu_jiutian_bottom_10"} and item.get("issue_position_window", 3) != 3:
             raise ValueError("该专属解析器固定要求三条窗口，不能配置其他值")
         hosts = item.get("allowed_resource_hosts", [])
