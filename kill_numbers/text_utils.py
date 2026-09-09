@@ -41,7 +41,13 @@ def origin(url: str) -> str:
 
 
 def normalize_issue(issue: str) -> str:
-    return str(int(str(issue).strip().replace("期", "")))
+    text = unicodedata.normalize("NFKC", str(issue)).strip()
+    if not re.fullmatch(r"[0-9]{1,4}(?:\s*期)?", text):
+        raise ValueError(f"期数格式无效：{issue!r}")
+    number = int(text.removesuffix("期").strip())
+    if not 1 <= number <= 999:
+        raise ValueError("期数必须是1至999的正整数")
+    return str(number)
 
 
 def parse_issues(raw: str) -> list[str]:

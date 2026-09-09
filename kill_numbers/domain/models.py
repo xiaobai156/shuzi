@@ -65,4 +65,10 @@ class CandidateEvidence:
     section_start: int = -1
     section_end: int = -1
     candidate_start: int = -1
+    scope_kind: str = ""
+    source_identity: str = ""
+    region: str = ""
+    window_size: int = 0
+    row_rank: int = -1
+    parser_id: str = ""
     metadata: dict[str, Any] = field(default_factory=dict)

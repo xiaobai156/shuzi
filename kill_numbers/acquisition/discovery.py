@@ -1,4 +1,5 @@
 import base64
+from kill_numbers.acquisition.policy import child_url_allowed
 import html
 import re
 from urllib.parse import urljoin, urlparse
@@ -18,28 +19,17 @@ def decode_strdecode_payloads(value: str) -> list[str]:
         r"decodeB64\([\"']([^\"']+)[\"']\)",
         r"__PAGE_DATA__\s*=\s*[\"']([^\"']+)[\"']",
     ]
-    for pattern in patterns:
-        for match in re.finditer(pattern, value):
-            payload = match.group(1)
-            try:
-                decoded.append(base64.b64decode(payload).decode("utf-8", errors="ignore"))
-            except Exception:
-                continue
+    matches = sorted((match for pattern in patterns for match in re.finditer(pattern, value)), key=lambda m:m.start())
+    for match in matches:
+        try:
+            decoded.append(base64.b64decode(match.group(1), validate=True).decode("utf-8"))
+        except (ValueError, UnicodeError):
+            continue
     return decoded
 
 
 def is_fetchable_script(src: str, page_url: str) -> bool:
-    parsed_src = urlparse(src)
-    parsed_page = urlparse(page_url)
-    if "hm.baidu.com" in parsed_src.netloc:
-        return False
-    if "/upload/script/" in src:
-        return True
-    if parsed_src.netloc == parsed_page.netloc:
-        return True
-    if not parsed_src.netloc:
-        return True
-    return False
+    return child_url_allowed(src, page_url) and urlparse(src).hostname != "hm.baidu.com"
 
 
 def script_urls(html_value: str, page_url: str) -> list[str]:
@@ -57,5 +47,7 @@ def iframe_urls(html_value: str, page_url: str) -> list[str]:
     for match in re.finditer(r"<iframe[^>]+src=[\"']([^\"']+)[\"']", html_value, re.I):
         src = html.unescape(match.group(1)).strip()
         if src and not src.lower().startswith(("javascript:", "data:")):
-            urls.append(urljoin(page_url, src))
+            absolute = urljoin(page_url, src)
+            if child_url_allowed(absolute, page_url):
+                urls.append(absolute)
     return unique_keep_order(urls)

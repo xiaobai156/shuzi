@@ -19,12 +19,10 @@ def latest_issue_from_input(raw_issues: str, default_issues: str) -> str:
 
 
 def crawler_command_for_input(raw_issues: str) -> list[str]:
-    cmd = [sys.executable, str(CRAWLER_FILE), "--workers", str(CRAWLER_WORKERS)]
-    if raw_issues:
-        cmd.extend(["--issues", raw_issues])
-        if len(crawler.parse_issues(raw_issues)) > 1:
-            cmd.append("--no-cache-update")
-    return cmd
+    issues = crawler.parse_issues(raw_issues or crawler.DEFAULT_ISSUES)
+    if len(issues) != 1:
+        raise ValueError("单期入口只允许一个期数；多个期数请使用多期入口")
+    return [sys.executable, str(CRAWLER_FILE), "--workers", str(CRAWLER_WORKERS), "--issues", issues[0]]
 
 
 def configure_output_encoding() -> None:
@@ -37,13 +35,16 @@ def configure_output_encoding() -> None:
 
 def main() -> int:
     configure_output_encoding()
-    print("请输入要爬取的期数，多个期数用逗号分隔，例如：124 或 123,124")
+    print("请输入要爬取的单一期数，例如：124；多个期数请使用多期入口")
     print("直接回车则使用 crawler.py 默认期数。")
     issues = input("期数：").strip()
-    crawl_issues = crawler.parse_issues(issues or crawler.DEFAULT_ISSUES)
-    latest_issue = latest_issue_from_input(issues, crawler.DEFAULT_ISSUES)
-
-    cmd = crawler_command_for_input(issues)
+    try:
+        cmd = crawler_command_for_input(issues)
+        crawl_issues = crawler.parse_issues(issues or crawler.DEFAULT_ISSUES)
+        latest_issue = crawl_issues[0]
+    except ValueError as exc:
+        print(exc)
+        return 2
 
     print()
     print("正在启动...")
@@ -64,7 +65,7 @@ def main() -> int:
         return 1
 
     print()
-    print(f"{CACHE_FILE} 已由 crawler.py 同步：最新期 {latest_issue}，保留近10期。")
+    print("缓存状态以 crawler.py 输出为准；只有完整、周期明确的近10期缓存可用于正式判重。")
 
     print()
     print("运行结束，请查看 N期-杀数字-成功.txt；如有失败，再查看 N期-杀数字-失败.txt")

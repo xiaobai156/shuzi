@@ -1,4 +1,5 @@
 import re
+import hashlib
 from collections.abc import Iterable, Mapping
 
 from kill_numbers.domain.models import (
@@ -9,6 +10,11 @@ from kill_numbers.domain.models import (
 )
 from kill_numbers.parsing.common import (
     find_number_groups,
+    candidate_rows,
+    windowed_rows,
+    resolve_candidate_window,
+    target_candidate_window,
+    normalize_region,
     has_duplicate_numbers,
     issue_segment_matches,
     scope_text_by_anchor_with_offset,
@@ -16,70 +22,57 @@ from kill_numbers.parsing.common import (
 )
 from kill_numbers.parsing.dedicated.site_parsers import normalize_identity_article_current_placeholder
 from kill_numbers.text_utils import as_list, html_to_text, normalize_issue, unique_keep_order
+from kill_numbers.parsing.source_scope import target_for_document
+from kill_numbers.parsing.evidence_scope import evidence_section
 
 
-def _candidate_location(
-    target: Mapping,
-    issue: str,
-    numbers: list[str],
-    document: SourceDocument,
-) -> tuple[str, int, int, int]:
-    text = html_to_text(document.content)
-    if target.get("special_parser") == "identity_article_bottom_10":
-        text = normalize_identity_article_current_placeholder(text, target)
-
-    anchors = [
-        str(value).strip()
-        for value in (
-            *as_list(target.get("anchor")),
-            *as_list(target.get("source_anchor")),
-            target.get("article_identity"),
-        )
-        if str(value).strip()
-    ]
-    region = str(target.get("region") or "").lower()
-
-    def evidence_groups(segment: str) -> list[list[str]]:
-        groups = find_number_groups(segment)
-        if groups:
-            return groups
-        expected_count = target.get("count")
-        if not isinstance(expected_count, int) or expected_count <= 0:
-            return []
-        pattern = re.compile(
-            rf"(?<!\d)\d{{1,2}}(?:[\s.,，。、;；|/\\]+\d{{1,2}}){{{expected_count - 1}}}"
-        )
-        return [
-            [f"{int(number):02d}" for number in re.findall(r"\d{1,2}", match.group(0))]
-            for match in pattern.finditer(segment)
-        ]
-
-    for anchor in (*unique_keep_order(anchors), ""):
-        try:
-            section, section_start = scope_text_by_anchor_with_offset(
-                text,
-                anchor,
-                target.get("stop_anchor"),
-            )
-        except ValueError:
-            continue
-
-        locations = []
+def _candidate_proof(target, issue, numbers, document):
+    from kill_numbers.parsing.registry import parse_target_content
+    if document.fingerprint != hashlib.sha256(document.content.encode("utf-8", errors="replace")).hexdigest():
+        raise ValueError("来源文档内容与指纹不匹配")
+    effective = target_for_document(target, document)
+    parser = str(effective.get("special_parser") or "")
+    # These acquisition adapters have already selected a unique article. Replay
+    # its actual body parser, not the listing-page parser.
+    if parser == "zuojianzifu_link_chain":
+        effective["special_parser"] = ""
+    elif parser == "ttss_paginated_identity_top_10":
+        effective["special_parser"] = "identity_article_top_10"
+    if effective.get("region") or effective.get("special_parser"):
+        found = parse_target_content(document.content, effective, [issue])
+        if found.get(issue) != numbers:
+            raise ValueError(f"{issue}期来源证据与专属解析/方向窗口不匹配")
+    text, section, offset = evidence_section(document.content, effective)
+    keywords = [] if parser == "macau_baoma" else effective.get("keywords")
+    if effective.get("special_parser") == "identity_article_top_10":
+        keywords = [effective["article_identity"]]
+    rows = list(candidate_rows(section, keywords, effective.get("count"),
+                               effective.get("allow_duplicate_numbers", False)))
+    allowed = effective.get("_allowed_row_starts")
+    selected = ([row for row in rows if row.start in allowed] if allowed is not None
+                else windowed_rows(rows, effective.get("region"), effective.get("issue_position_window")))
+    locations = [(rank, row.start) for rank, row in enumerate(selected)
+                 if row.issue == issue and tuple(numbers) in row.groups]
+    if not locations and not effective.get("region") and not effective.get("special_parser"):
+        # Small-count unscoped helper contracts (not a formal site parser).
         for match in issue_segment_matches(section, issue):
-            for group in evidence_groups(match.group(0)):
-                normalized = [f"{int(number):02d}" for number in group]
-                if normalized == numbers:
-                    locations.append(section_start + match.start())
-        if locations:
-            candidate_start = locations[-1] if region in {"bottom", "下", "尾部", "底部"} else locations[0]
-            return (
-                anchor,
-                section_start,
-                section_start + len(section),
-                candidate_start,
-            )
+            groups = re.findall(r"(?<!\d)\d+(?:[\s.,，。、;；|/\\]+\d+)+(?!\d)", match.group(0))
+            for group in groups:
+                tokens = re.findall(r"\d+", group)
+                if all(len(n) <= 2 and valid_number(n) for n in tokens) and [f"{int(n):02d}" for n in tokens] == numbers:
+                    locations.append((0, match.start()))
+    if not locations:
+        raise ValueError(f"{issue}期候选缺少同块栏目/偏移证据")
+    rank, location = locations[-1] if normalize_region(effective.get("region")) == "bottom" else locations[0]
+    if allowed is not None:
+        rank = document.metadata["row_ranks"][location]
+    anchor = str(effective.get("anchor") or "")
+    return effective, anchor, offset, offset + len(section), offset + location, rank
 
-    raise ValueError(f"{issue}期候选缺少同块栏目/偏移证据")
+
+def _candidate_location(target, issue, numbers, document):
+    _, anchor, start, end, position, _rank = _candidate_proof(target, issue, numbers, document)
+    return anchor, start, end, position
 
 
 def _normalize_numbers(
@@ -132,7 +125,7 @@ def evidence_from_source_document(
         raise ValueError("；".join(errors))
     if not document.content.strip() or not document.fingerprint:
         raise ValueError(f"{normalized_issue}期来源文档证据不完整")
-    anchor, section_start, section_end, candidate_start = _candidate_location(
+    effective, anchor, section_start, section_end, candidate_start, rank = _candidate_proof(
         target,
         normalized_issue,
         normalized_numbers,
@@ -148,6 +141,12 @@ def evidence_from_source_document(
         section_start=section_start,
         section_end=section_end,
         candidate_start=candidate_start,
+        scope_kind=effective.get("_scope_kind", "dedicated_parser" if effective.get("special_parser") else "text_anchor"),
+        source_identity=effective.get("_source_identity", ""),
+        region=normalize_region(target.get("region")),
+        window_size=target_candidate_window(target),
+        row_rank=rank,
+        parser_id=str(target.get("special_parser") or "generic"),
     )
 
 
@@ -174,6 +173,20 @@ def _validate_candidate_evidence(
         or evidence.candidate_start >= evidence.section_end
     ):
         errors.append(f"{issue}期来源证据缺少同块栏目/偏移")
+    expected_region = normalize_region(target.get("region"))
+    if expected_region and (
+        evidence.region != expected_region
+        or evidence.window_size != target_candidate_window(target)
+        or not 0 <= evidence.row_rank < evidence.window_size
+        or evidence.parser_id != str(target.get("special_parser") or "generic")
+    ):
+        errors.append(f"{issue}期来源证据方向/窗口不匹配")
+    if evidence.scope_kind == "source_identity":
+        from kill_numbers.text_utils import normalize_keyword
+        if not evidence.source_identity or normalize_keyword(evidence.source_identity) != normalize_keyword(str(target.get("anchor") or "")):
+            errors.append(f"{issue}期来源证据身份不匹配")
+    elif target.get("anchor") and not evidence.anchor and not target.get("special_parser"):
+        errors.append(f"{issue}期来源证据锚点缺失")
     source_pattern = str(target.get("source_url_pattern") or "").strip()
     if source_pattern and not re.search(source_pattern, evidence.source_url, re.I):
         errors.append(f"{issue}期来源证据不符合专属 URL 契约")
@@ -302,7 +315,7 @@ def validate_crawl_results(
                     result.evidence
                     for result in results
                     if normalize_issue(result.issue) == issue
-                    and list(result.numbers) == numbers
+                    and _normalize_numbers(result.numbers, issue=issue)[0] == numbers
                 ),
                 None,
             ),

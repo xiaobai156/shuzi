@@ -1,202 +1,195 @@
+"""Version-2 rolling observations; this store NEVER supplies live crawl results."""
+import hashlib
 import json
 import time
+from collections import defaultdict
 from pathlib import Path
-from collections.abc import Iterable
 
+from kill_numbers.domain.periods import (
+    canonical_url, cycle_key, period_key, period_sort_key, recent_periods,
+    validate_cycle_lengths, target_identity,
+)
 from kill_numbers.infrastructure.file_store import atomic_write_json
 from kill_numbers.text_utils import normalize_issue
 
 
-def _issue_key(value: object) -> str:
-    return normalize_issue(value)
+CACHE_VERSION = 2
 
 
-def _recent_issues_from_latest(latest_issue: str, count: int) -> list[str]:
-    last_issue = int(_issue_key(latest_issue))
-    first_issue = max(1, last_issue - count + 1)
-    return [str(issue) for issue in range(first_issue, last_issue + 1)]
+def target_signature(target):
+    fields = ('url', 'count', 'region', 'anchor', 'stop_anchor', 'keywords',
+              'special_parser', 'article_identity', 'source_url_pattern',
+              'source_anchor', 'issue_position_window', 'allow_duplicate_numbers',
+              'api_url', 'article_title_anchor', 'encoding', 'link_keywords',
+              'pagination_limit', 'insecure_tls', 'allowed_resource_hosts')
+    value = {key: target.get(key) for key in fields}
+    value['url'] = canonical_url(value['url'] or '')
+    return hashlib.sha256(json.dumps(value, ensure_ascii=False, sort_keys=True).encode()).hexdigest()
 
 
-def _dedupe_results(results: Iterable[object]) -> list[object]:
-    seen = set()
-    deduped = []
-    for item in results:
-        key = (
-            str(getattr(item, "url", "")),
-            str(getattr(item, "name", "")),
-            str(getattr(item, "issue", "")),
-            tuple(getattr(item, "numbers", ()) or ()),
-        )
-        if key in seen:
-            continue
-        seen.add(key)
-        deduped.append(item)
-    return deduped
+def _identity(item):
+    url = canonical_url(item.get('url') or '')
+    if not url:
+        raise ValueError('缓存记录缺少站点 URL，不能仅按名称确定身份')
+    return str(item.get('target_id') or url + '|legacy-name=' + str(item.get('name') or ''))
 
 
-def update_recent_duplicate_cache(
-    cache_path: str | Path,
-    results: Iterable[object],
-    issues: Iterable[str],
-    recent_count: int = 10,
-    failures: Iterable[object] | None = None,
-) -> None:
-    requested_issue_list = []
-    for issue in issues:
-        normalized = normalize_issue(issue)
-        if normalized and normalized not in requested_issue_list:
-            requested_issue_list.append(normalized)
-    requested_issues = set(requested_issue_list)
-    if not requested_issues:
+def _key(item):
+    return _identity(item), period_key(item.get('cycle_id'), item.get('issue'))
+
+
+def _read(path):
+    if not path.exists():
+        return {'version': CACHE_VERSION, 'records': [], 'failures': [], 'sites': {}, 'cycle_lengths': {}}
+    try:
+        data = json.loads(path.read_text(encoding='utf-8-sig'))
+    except (OSError, ValueError) as exc:
+        raise ValueError(f'缓存文件无法读取，已停止覆盖：{path}；{exc}') from exc
+    if not isinstance(data, dict) or type(data.get('version')) is not int or data.get('version') not in (1, CACHE_VERSION):
+        raise ValueError('缓存文件结构或版本错误，已停止覆盖')
+    for field in ('records', 'failures'):
+        if not isinstance(data.get(field, []), list) or any(not isinstance(r, dict) for r in data.get(field, [])):
+            raise ValueError(f'缓存文件 {field} 格式错误，已停止覆盖')
+    if not isinstance(data.get('sites', {}), dict):
+        raise ValueError('缓存 sites 格式错误')
+    validate_cycle_lengths(data.get('cycle_lengths', {}))
+    return data
+
+
+def update_recent_duplicate_cache(cache_path, results, issues, recent_count=10,
+                                  failures=None, *, targets=None, cycle_id=None,
+                                  cycle_lengths=None):
+    if type(recent_count) is not int or recent_count <= 0:
+        raise ValueError('recent_count 必须是正整数')
+    requested = list(dict.fromkeys(normalize_issue(i) for i in issues))
+    if not requested:
         return
-
     path = Path(cache_path)
-    existing_records: list[dict] = []
-    if path.exists():
-        try:
-            data = json.loads(path.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError) as exc:
-            raise ValueError(f"缓存文件无法读取，已停止覆盖：{path}；{exc}") from exc
-        records = data.get("records") if isinstance(data, dict) else None
-        if not isinstance(records, list):
-            raise ValueError(f"缓存文件格式错误，已停止覆盖：{path}")
-        existing_records = [record for record in records if isinstance(record, dict)]
-        failure_records = data.get("failures", [])
-        if not isinstance(failure_records, list):
-            raise ValueError(f"缓存文件失败状态格式错误，已停止覆盖：{path}")
-        existing_failures = [record for record in failure_records if isinstance(record, dict)]
-    else:
-        existing_failures = []
+    data = _read(path)
+    targets_by_url = {target_identity(t): t for t in (targets or []) if not t.get('disabled')}
+    targets_by_ref = {(t['name'], canonical_url(t['url'])): t for t in targets_by_url.values()}
+    lengths = validate_cycle_lengths(data.get('cycle_lengths', {}))
+    for cycle, length in validate_cycle_lengths(cycle_lengths or {}).items():
+        if cycle in lengths and lengths[cycle] != length:
+            raise ValueError('已记录的周期期数上限发生冲突，拒绝覆盖')
+        lengths[cycle] = length
+    fallback_cycle = cycle_key(cycle_id)
+    sites = dict(data.get('sites', {}))
+    old_success, old_failure = {}, {}
+    for field, bucket in [('records', old_success), ('failures', old_failure)]:
+        for original in data.get(field, []):
+            row = dict(original)
+            if targets is not None and not row.get('target_id'):
+                target = targets_by_ref.get((row.get('name'), canonical_url(row.get('url') or '')))
+                if target:
+                    row['target_id'] = target_identity(target)
+            key = _key(row)
+            if targets is not None and key[0] not in targets_by_url:
+                continue  # Disabled targets do not survive in the active baseline.
+            if key in bucket and bucket[key] != row:
+                raise ValueError(f'缓存同站同期冲突：{row.get("name")} {row.get("issue")}期')
+            bucket[key] = row
+    # A previously contradictory store is not silently re-certified.
+    if old_success.keys() & old_failure.keys():
+        raise ValueError('缓存同站同期同时存在成功和失败，需重建该缓存')
+    new_success, new_failure = {}, {}
 
-    existing_issues = [
-        int(_issue_key(record.get("issue", "")))
-        for record in existing_records
-        if _issue_key(record.get("issue", ""))
-    ]
-    existing_issues.extend(
-        int(_issue_key(record.get("issue", "")))
-        for record in existing_failures
-        if _issue_key(record.get("issue", ""))
-    )
-    latest_issue = max([int(issue) for issue in requested_issues] + existing_issues)
-    wanted_issues = set(_recent_issues_from_latest(str(latest_issue), recent_count))
+    def base(item, issue):
+        target = targets_by_ref.get((str(item.name), canonical_url(item.url)), {})
+        if targets is not None and not target:
+            raise ValueError('缓存写入包含未启用目标')
+        url = target_identity(target) if target else canonical_url(item.url) + '|legacy-name=' + str(item.name)
+        cycle = cycle_key(target.get('cycle_id') or fallback_cycle)
+        row = {'name': str(item.name), 'url': str(item.url), 'issue': normalize_issue(issue)}
+        if target:
+            row['target_id'] = target_identity(target)
+        if cycle:
+            row['cycle_id'] = cycle
+        if cycle in lengths and int(row['issue']) > lengths[cycle]:
+            raise ValueError('期号超过已确认的周期期数上限')
+        meta = dict(sites.get(url, {}))
+        if target:
+            signature = target_signature(target)
+            if meta.get('contract_hash') and meta['contract_hash'] != signature:
+                # Contract changes require fresh observations, not reuse by URL.
+                for bucket in (old_success, old_failure):
+                    for key in list(bucket):
+                        if key[0] == url:
+                            del bucket[key]
+            meta.update(contract_hash=signature, region=target.get('region'), name=target.get('name'))
+        meta['cycle_verified'] = bool(cycle)
+        if cycle:
+            meta['cycle_id'] = cycle
+        sites[url] = meta
+        return row
 
-    new_records = [
-        {
-            "name": str(item.name),
-            "url": str(item.url),
-            "issue": normalize_issue(item.issue),
-            "numbers": ",".join(item.numbers),
-        }
-        for item in _dedupe_results(results)
-        if normalize_issue(item.issue) in wanted_issues
-    ]
-
-    def record_key(record: dict) -> tuple[str, str, str]:
-        return (
-            str(record.get("name") or "").strip(),
-            str(record.get("url") or "").strip().lower(),
-            _issue_key(record.get("issue", "")),
-        )
-
-    new_by_key: dict[tuple[str, str, str], dict] = {}
-    for record in new_records:
-        key = record_key(record)
-        previous = new_by_key.get(key)
-        if previous and previous["numbers"] != record["numbers"]:
-            raise ValueError(f"缓存更新存在同站同期冲突：{record['name']} {record['issue']}期")
-        new_by_key[key] = record
-
-    new_failures: list[dict] = []
-    failure_by_key: dict[tuple[str, str, str], dict] = {}
+    for result in results:
+        if normalize_issue(result.issue) not in requested:
+            raise ValueError('缓存写入混入非指定期数')
+        row = base(result, result.issue)
+        tokens = list(result.numbers)
+        if not tokens or any(not isinstance(n, str) or len(n) != 2 or not n.isdecimal()
+                             or not 1 <= int(n) <= 49 for n in tokens):
+            raise ValueError('缓存成功号码必须是完整的01至49号码组')
+        target = targets_by_ref.get((str(result.name), canonical_url(result.url)), {})
+        if target.get('count') is not None and len(tokens) != target['count']:
+            raise ValueError('缓存号码数量与配置不匹配')
+        if not target.get('allow_duplicate_numbers', False) and len(set(tokens)) != len(tokens):
+            raise ValueError('缓存号码有重复')
+        row['numbers'] = ','.join(tokens)
+        key = _key(row)
+        if key in new_success and new_success[key]['numbers'] != row['numbers']:
+            raise ValueError('缓存更新存在同站同期冲突')
+        new_success[key] = row
     for failure in failures or []:
-        failure_issues = []
-        raw_failure_issue = str(getattr(failure, "issue", "") or "").strip()
-        failure_issue = _issue_key(raw_failure_issue) if raw_failure_issue else ""
-        if failure_issue:
-            failure_issues.append(failure_issue)
-        else:
-            failure_issues.extend(requested_issue_list)
+        failure_issues = [getattr(failure, 'issue')] if getattr(failure, 'issue', None) else requested
         for issue in failure_issues:
-            if issue not in wanted_issues:
-                continue
-            record = {
-                "name": str(getattr(failure, "name", "") or ""),
-                "url": str(getattr(failure, "url", "") or ""),
-                "issue": issue,
-                "status": "failed",
-                "reason": str(getattr(failure, "reason", "") or "未提供失败原因"),
-            }
-            key = record_key(record)
-            previous = failure_by_key.get(key)
-            if previous and previous["reason"] != record["reason"]:
-                raise ValueError(f"缓存更新存在同站同期失败冲突：{record['name']} {record['issue']}期")
-            failure_by_key[key] = record
-            if previous is None:
-                new_failures.append(record)
+            if normalize_issue(issue) not in requested:
+                raise ValueError('缓存失败状态混入非指定期数')
+            row = base(failure, issue)
+            row.update(status='failed', reason=str(failure.reason or '未提供失败原因'))
+            key = _key(row)
+            if key in new_failure and new_failure[key] != row:
+                raise ValueError('缓存更新存在同站同期失败冲突')
+            new_failure[key] = row
+    success_keys, failure_keys = frozenset(new_success), frozenset(new_failure)
+    if success_keys & failure_keys:
+        raise ValueError('缓存更新同站同期同时存在成功和失败')
+    for key in failure_keys:
+        old_success.pop(key, None)
+    for key in success_keys:
+        old_failure.pop(key, None)
+    old_success.update(new_success)
+    old_failure.update(new_failure)
 
-    combined_records = []
-    for record in existing_records:
-        normalized = {
-            "name": str(record.get("name") or ""),
-            "url": str(record.get("url") or ""),
-            "issue": _issue_key(record.get("issue", "")),
-            "numbers": str(record.get("numbers") or ""),
-        }
-        if (
-            not normalized["name"]
-            or not normalized["issue"]
-            or not normalized["numbers"]
-            or normalized["issue"] not in wanted_issues
-        ):
-            continue
-        key = record_key(normalized)
-        if key in failure_by_key:
-            continue
-        replacement = new_by_key.pop(key, None)
-        combined_records.append(replacement or normalized)
-
-    for record in new_records:
-        key = record_key(record)
-        if key in new_by_key:
-            combined_records.append(new_by_key.pop(key))
-
-    combined_failures = []
-    for record in existing_failures:
-        normalized = {
-            "name": str(record.get("name") or ""),
-            "url": str(record.get("url") or ""),
-            "issue": _issue_key(record.get("issue", "")),
-            "status": str(record.get("status") or ""),
-            "reason": str(record.get("reason") or ""),
-        }
-        if (
-            not normalized["name"]
-            or not normalized["issue"]
-            or normalized["issue"] not in wanted_issues
-            or normalized["status"] != "failed"
-            or not normalized["reason"]
-        ):
-            continue
-        key = record_key(normalized)
-        if key in new_by_key:
-            continue
-        replacement = failure_by_key.pop(key, None)
-        combined_failures.append(replacement or normalized)
-
-    for record in new_failures:
-        key = record_key(record)
-        if key in failure_by_key:
-            combined_failures.append(failure_by_key.pop(key))
-
-    atomic_write_json(
-        path,
-        {
-            "version": 1,
-            "generated_at": time.strftime("%Y-%m-%dT%H:%M:%S"),
-            "recent_count": recent_count,
-            "records": combined_records,
-            "failures": combined_failures,
-        },
-        trailing_newline=False,
-    )
+    # Trim each site's own scope independently. A failed request for 220 must
+    # not discard another site's valid 206..215 history.
+    groups = defaultdict(list)
+    for key in old_success:
+        groups[key[0]].append(key)
+    retained = set()
+    for url, keys in groups.items():
+        verified = [k for k in keys if k[1].split(':', 1)[0]]
+        candidates = verified or keys
+        latest = max(candidates, key=lambda k: period_sort_key(k[1]))[1]
+        try:
+            wanted = set(recent_periods(latest, recent_count, lengths))
+            retained.update(k for k in candidates if k[1] in wanted)
+        except ValueError:
+            # Keep observations, but a checker will report the unproven seam.
+            retained.update(sorted(candidates, key=lambda k: period_sort_key(k[1]))[-recent_count:])
+        sites.setdefault(url, {})['latest_period'] = latest
+    failure_groups = defaultdict(list)
+    for key in old_failure:
+        failure_groups[key[0]].append(key)
+    retained_failures = {key for keys in failure_groups.values()
+                         for key in sorted(keys, key=lambda k: period_sort_key(k[1]))[-recent_count:]}
+    if targets is not None:
+        sites = {url: meta for url, meta in sites.items() if url in targets_by_url}
+    atomic_write_json(path, {
+        'version': CACHE_VERSION, 'generated_at': time.strftime('%Y-%m-%dT%H:%M:%S'),
+        'recent_count': recent_count, 'cycle_lengths': lengths, 'sites': sites,
+        'records': [row for key, row in old_success.items() if key in retained],
+        'failures': [row for key, row in old_failure.items() if key in retained_failures],
+        'migration_note': ('未标注cycle_id的旧记录只保留为观察值，不用于正式无重复结论'),
+    }, trailing_newline=False)

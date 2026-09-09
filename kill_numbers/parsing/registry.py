@@ -29,6 +29,7 @@ def parse_generic(content: str, issues: list[str], target: dict) -> dict[str, li
         stop_anchor=target.get("stop_anchor"),
         region=target.get("region"),
         issue_position_window=target.get("issue_position_window"),
+        allowed_row_starts=target.get("_allowed_row_starts"),
     )
 
 
@@ -43,6 +44,7 @@ def available_generic(content: str, target: dict) -> list[str]:
         stop_anchor=target.get("stop_anchor"),
         region=target.get("region"),
         issue_position_window=target.get("issue_position_window"),
+        allowed_row_starts=target.get("_allowed_row_starts"),
     )
 
 
@@ -51,6 +53,7 @@ def _count_parser(function: Callable) -> ParseFunction:
         content,
         issues,
         expected_count=target.get("count"),
+        issue_position_window=target.get("issue_position_window"),
     )
 
 
@@ -60,6 +63,7 @@ def _count_region_parser(function: Callable) -> ParseFunction:
         issues,
         expected_count=target.get("count"),
         region=target.get("region"),
+        issue_position_window=target.get("issue_position_window"),
     )
 
 
@@ -165,5 +169,13 @@ def parse_target_content(
 
 def available_issues_from_content(content: str, target: dict) -> list[str]:
     adapter = parser_adapter(target)
-    available = adapter.available or available_generic
-    return available(content, target)
+    if adapter.available is not None:
+        return adapter.available(content, target)
+    # Replay the exact dedicated parser over the period labels in this document;
+    # do not route dedicated history/HTML structures through generic discovery.
+    import re
+    from kill_numbers.text_utils import html_to_text, normalize_issue, unique_keep_order
+    issues = unique_keep_order(normalize_issue(m.group(1)) for m in
+        re.finditer(r"(?<!\d)0?(\d{1,3})\s*期", html_to_text(content)))
+    found = adapter.parse(content, issues, target)
+    return [issue for issue in issues if issue in found]

@@ -2,6 +2,9 @@ import re
 
 from kill_numbers.parsing.common import (
     CANDIDATE_REGION_WINDOW,
+    resolve_candidate_window,
+    candidate_rows,
+    windowed_rows,
     extract_issue_numbers,
     filter_candidates_by_region,
     find_number_groups,
@@ -43,6 +46,7 @@ def diagnose_issue_mismatch(
         expected_count,
         region,
         issue_position_window,
+        allow_duplicate_numbers,
     )
 
     for issue in issues:
@@ -88,7 +92,7 @@ def diagnose_issue_mismatch(
         if valid_candidate_outside_window and not region_candidates:
             messages.append(
                 f"找到该期候选，但不在配置位置 {normalized_region or '未配置'} "
-                f"最新 {CANDIDATE_REGION_WINDOW} 条同栏目内"
+                f"最新 {resolve_candidate_window(issue_position_window)} 条同栏目内"
             )
         if region_candidates:
             strict_region = needs_strict_region_window(region_candidates)
@@ -105,7 +109,7 @@ def diagnose_issue_mismatch(
             if not selected:
                 preview = " | ".join(",".join(group) for group, _segment, _start in region_candidates[:5])
                 messages.append(
-                    f"找到该期符合数量的候选，但不在配置位置 {normalized_region or '未配置'} 最新 {CANDIDATE_REGION_WINDOW} 组内：{preview}"
+                    f"找到该期符合数量的候选，但不在配置位置 {normalized_region or '未配置'} 最新 {resolve_candidate_window(issue_position_window)} 组内：{preview}"
                 )
         if messages:
             diagnostics[issue] = "；".join(unique_keep_order(messages))
@@ -122,56 +126,20 @@ def detect_available_issues(
     stop_anchor=None,
     region: str | None = None,
     issue_position_window: int | None = None,
+    allowed_row_starts: set[int] | None = None,
 ) -> list[str]:
     text = html_to_text(text)
     text = scope_text_by_anchor(text, anchor, stop_anchor)
 
-    if issue_position_window:
-        allowed_window_starts = issue_position_window_starts(
-            text,
-            keywords,
-            expected_count,
-            region,
-            issue_position_window,
-        )
-        keyword_list = [normalize_keyword(keyword) for keyword in (keywords or []) if keyword]
-        available = []
-        for match in iter_all_issue_segment_matches(text):
-            if match.start() not in allowed_window_starts:
-                continue
-            segment = match.group(0)
-            compact_segment = normalize_keyword(segment)
-            if keyword_list and not any(keyword in compact_segment for keyword in keyword_list):
-                continue
-            groups = find_number_groups(segment)
-            if any(
-                (not expected_count or len(group) == expected_count)
-                and (allow_duplicate_numbers or not has_duplicate_numbers(group))
-                for group in groups
-            ):
-                available.append(normalize_issue(match.group(1)))
-        return unique_keep_order(available)
-
-    candidates = unique_keep_order(
-        normalize_issue(match.group(1))
-        for match in re.finditer(r"(?<!\d)0?(\d{1,3})\s*期", text)
-    )
+    candidates = list(candidate_rows(text, keywords, expected_count, allow_duplicate_numbers))
+    rows = ([row for row in candidates if row.start in allowed_row_starts]
+            if allowed_row_starts is not None else windowed_rows(candidates, region, issue_position_window))
     available = []
-    for issue in candidates:
-        found = extract_issue_numbers(
-            text,
-            [issue],
-            keywords=keywords,
-            expected_count=expected_count,
-            position=position,
-            allow_duplicate_numbers=allow_duplicate_numbers,
-            anchor=None,
-            stop_anchor=None,
-            region=region,
-            issue_position_window=issue_position_window,
-        )
-        if issue in found:
-            available.append(issue)
+    for row in rows:
+        if len(row.groups) != 1:
+            raise ValueError(f"{row.issue}期 候选不唯一")
+        if row.issue not in available:
+            available.append(row.issue)
     return available
 
 

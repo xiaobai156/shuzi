@@ -8,3 +8,7 @@ debug_pages/
 recent_10_cache.json
 .env
 .env.*
+.cache-state.json
+*-杀数字-运行.json
+pytest-results*.xml
+source.zip

@@ -131,30 +131,42 @@ def crawl_admin_article_page(
     if not article_id:
         raise ValueError("没有找到文章 ID")
 
-    api_error = None
     try:
         data = fetch_json(admin_article_api_url(url, target))
-        name, content = admin_article_dict_to_content(data, url)
-        if content_matches(content, target, issues):
-            return name, content
     except Exception as exc:
-        api_error = exc
+        if not is_http_404(exc):
+            raise  # Authentication, TLS and network errors cannot authorize another source.
+        data = None
 
-    try:
+    def authoritative_content(article):
+        if not isinstance(article, dict):
+            raise ValueError("文章接口返回格式异常")
+        returned_id = article.get("id")
+        if returned_id is not None and str(returned_id) != article_id:
+            raise ValueError("文章接口返回的ID与请求不匹配")
+        body = decode_possible_base64(str(article.get("html") or article.get("content") or ""))
+        if not body.strip():
+            return None
+        if (target or {}).get("special_parser") == "identity_article_bottom_10":
+            validate_identity_article_api_data(article, target)
+        # A populated authoritative article missing the requested issue is a
+        # parsing failure, not permission to search alternate historical data.
+        return admin_article_dict_to_content(article, url)
+
+    if data is not None:
+        result = authoritative_content(data)
+        if result is not None:
+            return result
+
+    # Only an API 404 or a confirmed empty body reaches the alternate source.
+    if site_url_param(url):
         data = fetch_admin_article_from_landing(url, article_id)
-        name, content = admin_article_dict_to_content(data, url)
-        if content_matches(content, target, issues):
-            return name, content
-    except Exception:
-        if api_error and not is_http_404(api_error):
-            raise api_error
-        raise
+        result = authoritative_content(data)
+        if result is not None:
+            return result
 
     raw_page = fetch_text(remove_fragment(url))
     if content_matches(raw_page, target, issues):
-        name = extract_name_from_text(raw_page, fallback=urlparse(url).netloc)
-        return name, raw_page
-
+        return extract_name_from_text(raw_page, fallback=urlparse(url).netloc), raw_page
     rendered = render_page(url)
-    name = extract_name_from_text(rendered, fallback=urlparse(url).netloc)
-    return name, rendered
+    return extract_name_from_text(rendered, fallback=urlparse(url).netloc), rendered

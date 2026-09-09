@@ -2,6 +2,7 @@ import re
 
 from kill_numbers.parsing.common import (
     CANDIDATE_REGION_WINDOW,
+    resolve_candidate_window,
     all_issue_segment_matches,
     extract_issue_numbers,
     find_anchor_index,
@@ -18,12 +19,7 @@ from kill_numbers.text_utils import html_to_text, normalize_issue, normalize_key
 
 
 def _configured_candidate_window(target: dict, label: str) -> int:
-    value = target.get("issue_position_window")
-    if value is None:
-        return CANDIDATE_REGION_WINDOW
-    if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
-        raise ValueError(f"{label}候选窗口无效：{value}")
-    return value
+    return resolve_candidate_window(target.get("issue_position_window"))
 
 
 def _windowed_article_history_section(section: str, target: dict) -> str:
@@ -68,6 +64,7 @@ def extract_macau_baoma_numbers(
     issues: list[str],
     expected_count: int | None = None,
     region: str | None = None,
+    issue_position_window: int | None = None,
 ) -> dict[str, list[str]]:
     issue_set = {normalize_issue(issue) for issue in issues}
     rows: list[tuple[list[str], str, int]] = []
@@ -78,8 +75,12 @@ def extract_macau_baoma_numbers(
     )
     for match in pattern.finditer(text):
         issue = normalize_issue(match.group(1))
-        numbers = re.findall(r"\d{2}", html_to_text(match.group(2)))
-        numbers = [number for number in numbers if valid_number(number)]
+        raw_numbers = html_to_text(match.group(2)).strip().strip("[]【】")
+        if not re.fullmatch(r"\d{2}(?:[\s.,，。、;；|/\\]+\d{2})*", raw_numbers):
+            continue
+        numbers = re.findall(r"\d{2}", raw_numbers)
+        if any(not valid_number(number) for number in numbers) or has_duplicate_numbers(numbers):
+            continue
         if expected_count and len(numbers) != expected_count:
             continue
         rows.append((numbers, issue, match.start()))
@@ -89,6 +90,7 @@ def extract_macau_baoma_numbers(
         region,
         strict_window=True,
         require_region=True,
+        issue_position_window=issue_position_window,
     )
     candidates: dict[str, list[list[str]]] = {}
     for numbers, issue, _position in selected_rows:
@@ -111,7 +113,10 @@ def extract_zuibaxian_top7_numbers(
     text: str,
     issues: list[str],
     expected_count: int | None = 10,
+    issue_position_window: int | None = None,
 ) -> dict[str, list[str]]:
+    if issue_position_window is None:
+        issue_position_window = 3  # The top_7 contract has an explicit three-row boundary.
     section_pattern = re.compile(r"<div\b[^>]*\bid=['\"]top_7['\"][^>]*>", re.I)
     matches = list(section_pattern.finditer(text))
     if len(matches) != 1:
@@ -128,7 +133,7 @@ def extract_zuibaxian_top7_numbers(
         expected_count=expected_count,
         strict_ambiguous=True,
         region="top",
-        issue_position_window=CANDIDATE_REGION_WINDOW,
+        issue_position_window=issue_position_window,
     )
 
 
@@ -136,6 +141,7 @@ def extract_white_tiger_stable_10_numbers(
     text: str,
     issues: list[str],
     expected_count: int | None = 10,
+    issue_position_window: int | None = None,
 ) -> dict[str, list[str]]:
     page_text = html_to_text(text)
     heading = re.search(r"(?<!\d)\d{1,3}\s*期\s*稳杀10码", page_text)
@@ -153,7 +159,7 @@ def extract_white_tiger_stable_10_numbers(
         expected_count=expected_count,
         strict_ambiguous=True,
         region="top",
-        issue_position_window=CANDIDATE_REGION_WINDOW,
+        issue_position_window=issue_position_window,
     )
 
 
@@ -181,6 +187,8 @@ def extract_top_article_history_numbers(
         if stop_anchor
         else -1
     )
+    if stop_anchor and stop_index < 0:
+        raise ValueError("没有找到正文结束锚点")
     section = page_text[author_index:stop_index if stop_index >= 0 else len(page_text)]
     candidate_section = _windowed_article_history_section(section, target)
     return extract_issue_numbers(
@@ -293,38 +301,14 @@ def extract_top_article_history_current_cycle_numbers(
 
     found: dict[str, list[str]] = {}
     for requested_issue in (normalize_issue(issue) for issue in issues):
-        block_candidates: list[tuple[int, list[list[str]]]] = []
-        for block_index, block in enumerate(directional_blocks):
-            candidates = [
-                numbers
-                for issue, numbers, _position in block
-                if issue == requested_issue
-            ]
-            if candidates:
-                block_candidates.append((block_index, candidates))
-
-        if not block_candidates:
-            continue
-
-        if len(block_candidates) > 1:
-            selected_candidates = next(
-                candidates
-                for block_index, candidates in block_candidates
-                if block_index == primary_block_index
-            )
-        else:
-            selected_candidates = block_candidates[0][1]
-
-        distinct: list[list[str]] = []
-        for numbers in selected_candidates:
-            if numbers not in distinct:
+        distinct = []
+        for issue, numbers, _position in directional_blocks[primary_block_index]:
+            if issue == requested_issue and numbers not in distinct:
                 distinct.append(numbers)
         if len(distinct) > 1:
-            preview = " | ".join(",".join(numbers) for numbers in distinct[:5])
-            raise ValueError(
-                f"{requested_issue}期 候选不唯一，已停止输出避免抓错：{preview}"
-            )
-        found[requested_issue] = distinct[0]
+            raise ValueError(f"{requested_issue}期 候选不唯一，已停止输出避免抓错")
+        if distinct:
+            found[requested_issue] = distinct[0]
 
     return found
 
@@ -359,7 +343,7 @@ def huxin_xiaozhu_stable_10_available_issues(text: str, target: dict) -> list[st
         keywords=["绝杀帝绝杀10码"],
         expected_count=10,
         region="top",
-        issue_position_window=CANDIDATE_REGION_WINDOW,
+        issue_position_window=target.get("issue_position_window"),
     )
 
 
@@ -376,7 +360,7 @@ def extract_huxin_xiaozhu_stable_10_numbers(
         expected_count=10,
         strict_ambiguous=True,
         region="top",
-        issue_position_window=CANDIDATE_REGION_WINDOW,
+        issue_position_window=target.get("issue_position_window"),
     )
 
 
@@ -395,8 +379,8 @@ def xinzhu_forum_top_candidates(text: str, target: dict) -> dict[str, list[list[
         r"((?:\d{2}\s*[.,、，]\s*){9}\d{2})(?=\s*[:：])"
     )
     headings = list(heading_pattern.finditer(page_text))
-    if not headings:
-        raise ValueError("新竹论坛没有找到精英榜绝杀十码栏目标题")
+    if len(headings) != 1:
+        raise ValueError("新竹论坛专属栏目标题不唯一或不存在")
 
     window = _configured_candidate_window(target, "新竹论坛顶部")
 
@@ -406,7 +390,10 @@ def xinzhu_forum_top_candidates(text: str, target: dict) -> dict[str, list[list[
         if not stop:
             raise ValueError("新竹论坛没有找到栏目停止边界：上一篇")
         section = page_text[heading.end():heading.end() + stop.start()]
-        for row in list(row_pattern.finditer(section))[:window]:
+        valid_rows = [row for row in row_pattern.finditer(section)
+                      if all(valid_number(n) for n in re.findall(r"\d{2}", row.group(2)))
+                      and not has_duplicate_numbers(re.findall(r"\d{2}", row.group(2)))]
+        for row in valid_rows[:window]:
             issue = normalize_issue(row.group(1))
             numbers = re.findall(r"\d{2}", row.group(2))
             if len(numbers) != 10 or any(not valid_number(number) for number in numbers):
@@ -610,6 +597,9 @@ def dedicated_ten_row_candidates(text: str, target: dict, parser_name: str) -> d
                 raise ValueError("师太专属数据行之间出现未知内容")
         if section[rows[-1].end():].strip():
             raise ValueError("师太专属末条数据后出现未知内容")
+    rows = [row for row in rows
+            if all(valid_number(n) for n in re.findall(r"\d{2}", row.group(2)))
+            and not has_duplicate_numbers(re.findall(r"\d{2}", row.group(2)))]
     rows = rows[:window] if expected_region == "top" else rows[-window:]
     candidates: dict[str, list[list[str]]] = {}
     for row in rows:
@@ -767,7 +757,7 @@ def qiancai_liangde_bottom_10_candidates(
             rows.append((issue, numbers, match.start()))
 
     candidates: dict[str, list[list[str]]] = {}
-    for issue, numbers, _position in rows[-CANDIDATE_REGION_WINDOW:]:
+    for issue, numbers, _position in rows[-_configured_candidate_window(target, "钱彩两得"):]:
         candidates.setdefault(issue, []).append(numbers)
     return candidates
 
@@ -900,6 +890,8 @@ def identity_article_top_10_candidates(text: str, target: dict) -> dict[str, lis
         for numbers in find_number_groups(segment):
             if len(numbers) != 10 or any(not valid_number(number) for number in numbers):
                 continue
+            if has_duplicate_numbers(numbers):
+                continue
             if numbers not in groups:
                 groups.append(numbers)
         if groups:
@@ -978,9 +970,12 @@ def identity_article_bottom_10_candidates(text: str, target: dict) -> dict[str, 
         for numbers in find_number_groups(segment):
             if len(numbers) != 10 or any(not valid_number(number) for number in numbers):
                 continue
+            if has_duplicate_numbers(numbers):
+                continue
             if numbers not in groups:
                 groups.append(numbers)
-        rows.append((normalize_issue(match.group(1)), groups, match.start()))
+        if groups:
+            rows.append((normalize_issue(match.group(1)), groups, match.start()))
 
     window = _configured_candidate_window(target, f"{identity}专属文章尾部")
     selected = rows[-window:]
@@ -1036,5 +1031,5 @@ def extract_babu_maoge_must_ten_numbers(
         strict_ambiguous=True,
         anchor=target.get("anchor"),
         region="top",
-        issue_position_window=CANDIDATE_REGION_WINDOW,
+        issue_position_window=target.get("issue_position_window"),
     )

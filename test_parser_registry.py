@@ -124,6 +124,7 @@ def test_user_forum_topic_sequence_applies_direction_window_before_parsing():
         "keywords": ["专属栏目"],
         "count": 4,
         "region": "top",
+        "issue_position_window": 3,
         "anchor": "作者甲",
     }
     documents = [

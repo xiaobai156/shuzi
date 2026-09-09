@@ -13,21 +13,13 @@ if not defined PY_CMD (
   exit /b 1
 )
 chcp 65001 >nul
-title 最新一期爬虫
+title 杀数字正式重复检测
 cd /d "%~dp0"
-echo 正在启动...
-set /p LATEST_ISSUE=请输入最新期号，例如 158：
-if not defined LATEST_ISSUE (
-  echo 未输入最新期号，已停止。
-  pause
-  exit /b 1
-)
-where py >nul 2>nul
-if %errorlevel%==0 (
-  %PY_CMD% check_duplicates.py --latest %LATEST_ISSUE% --recent 10 --workers 8 --write-cache --cache recent_10_cache.json
-) else (
-  %PY_CMD% check_duplicates.py --latest %LATEST_ISSUE% --recent 10 --workers 8 --write-cache --cache recent_10_cache.json
-)
+echo 读取每个站点的连续近10期缓存；不发起全站抓取，不修改缓存。
+%PY_CMD% check_duplicates.py --from-cache --recent 10 --cache recent_10_cache.json
+set "RC=%ERRORLEVEL%"
 echo.
-echo 运行结束，查看 重复检测结果.txt 和 recent_10_cache.json
+echo 运行结束。退出码0=完整无重复，4=检测未完成，5=疑似重复，6=拒收。
+echo 请查看 重复检测结果.txt。数据不足不能视为不重复。
 pause
+exit /b %RC%

@@ -15,13 +15,13 @@ def output_files_for_issues(
     directory = Path(results_dir)
     directory.mkdir(parents=True, exist_ok=True)
     if not normalized:
-        return str(directory / result_file), str(directory / failed_file), "当期报告.txt"
+        return str(directory / result_file), str(directory / failed_file), str(directory / "当期报告.txt")
 
     prefix = normalized[0] if len(normalized) == 1 else f"{normalized[0]}-{normalized[-1]}"
     return (
         str(directory / f"{prefix}期-杀数字-成功.txt"),
         str(directory / f"{prefix}期-杀数字-失败.txt"),
-        f"{prefix}期报告.txt",
+        str(directory / f"{prefix}期报告.txt"),
     )
 
 
@@ -54,6 +54,4 @@ def remove_stale_file(path: str | Path) -> None:
     try:
         Path(path).unlink()
     except FileNotFoundError:
-        pass
-    except OSError:
         pass

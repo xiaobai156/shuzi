@@ -1,4 +1,7 @@
 import inspect
+import pytest
+from kill_numbers.infrastructure.run_manifest import write_run_manifest
+from kill_numbers.domain.models import CrawlResult, CrawlFailure
 
 import crawler
 import run_crawler_multi_prompt as multi_prompt
@@ -13,9 +16,10 @@ def test_single_prompt_no_longer_contains_a_second_cache_or_output_path():
     assert "check_duplicates" not in source
 
 
-def test_single_prompt_disables_cache_updates_for_multiple_issues():
+def test_single_prompt_rejects_multiple_issues():
     assert "--no-cache-update" not in prompt.crawler_command_for_input("187")
-    assert "--no-cache-update" in prompt.crawler_command_for_input("187 188")
+    with pytest.raises(ValueError, match="只允许一个期数"):
+        prompt.crawler_command_for_input("187 188")
 
 
 def test_multi_prompt_uses_atomic_report_write_and_keeps_blank_line_between_sites(tmp_path, monkeypatch):
@@ -38,8 +42,15 @@ def test_multi_prompt_uses_atomic_report_write_and_keeps_blank_line_between_site
         encoding="utf-8",
     )
 
+    manifest = write_run_manifest(
+        tmp_path / "run.json", "run-211", "211",
+        [CrawlResult("https://one.test", "甲", "211", ["01", "02"])],
+        [CrawlFailure("https://two.test", "乙", "原因乙"),
+         CrawlFailure("https://three.test", "丙", "原因丙")],
+        crawler.load_targets(), success_file, failed_file,
+    )
     all_failed = multi_prompt.write_multi_failure_report(
-        [multi_prompt.IssueRun("211", 1, success_file, failed_file)],
+        [multi_prompt.IssueRun("211", 1, success_file, failed_file, manifest)],
         report_file,
     )
 

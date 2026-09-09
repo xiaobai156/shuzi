@@ -1,4 +1,5 @@
 import gzip
+import io
 import json
 import random
 import re
@@ -9,10 +10,27 @@ import threading
 import time
 from urllib.error import HTTPError
 from urllib.parse import urlparse
-from urllib.request import Request, urlopen
+from urllib.request import Request, build_opener, HTTPSHandler, HTTPRedirectHandler
+from kill_numbers.acquisition.policy import validate_request_url, insecure_for
+
+MAX_RESPONSE_BYTES = 8 * 1024 * 1024
 
 
-REQUEST_RETRIES = 5
+class SafeRedirectHandler(HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        validate_request_url(newurl)
+        if req.full_url.startswith("https://") and not newurl.startswith("https://"):
+            raise ValueError("拒绝 HTTPS 降级重定向")
+        return super().redirect_request(req, fp, code, msg, headers, newurl)
+
+
+def urlopen(request, *, timeout, context):
+    opener = build_opener(HTTPSHandler(context=context), SafeRedirectHandler())
+    return opener.open(request, timeout=timeout)
+
+
+
+REQUEST_RETRIES = 2
 HOST_MIN_INTERVAL = 0.7
 TRANSIENT_ERROR_MARKERS = (
     "WinError 10054",
@@ -50,12 +68,7 @@ _HOST_LOCKS_GUARD = threading.Lock()
 
 
 def create_ssl_context() -> ssl.SSLContext:
-    context = ssl._create_unverified_context()
-    try:
-        context.set_ciphers("DEFAULT:@SECLEVEL=1")
-    except ssl.SSLError:
-        pass
-    return context
+    return ssl.create_default_context()
 
 
 SSL_CONTEXT = create_ssl_context()
@@ -91,42 +104,23 @@ def is_retryable_network_error(exc: Exception | str) -> bool:
 
 
 def curl_fetch_bytes(url: str, timeout: int = 25) -> bytes:
+    validate_request_url(url)
     curl = shutil.which("curl.exe") or shutil.which("curl")
     if not curl:
         raise RuntimeError("curl 不可用")
-    cmd = [
-        curl,
-        "--location",
-        "--fail-with-body",
-        "--silent",
-        "--show-error",
-        "--http1.1",
-        "--ssl-no-revoke",
-        "--connect-timeout",
-        str(min(15, timeout)),
-        "--max-time",
-        str(timeout),
-        "--retry",
-        "2",
-        "--retry-delay",
-        "2",
-        "--retry-all-errors",
-        "-A",
-        HEADERS["User-Agent"],
-        "-H",
-        f"Accept: {HEADERS['Accept']}",
-        "-H",
-        f"Accept-Language: {HEADERS['Accept-Language']}",
-        "-H",
-        "Accept-Encoding: identity",
-        url,
-    ]
-    proc = subprocess.run(cmd, capture_output=True)
-    if proc.returncode != 0:
-        stderr = proc.stderr.decode("utf-8", errors="replace").strip()
-        if not stderr:
-            stderr = proc.stdout.decode("utf-8", errors="replace").strip()[:300]
-        raise RuntimeError(f"curl exit {proc.returncode}: {stderr}")
+    # Never let curl follow a redirect outside the Python URL policy.
+    cmd = [curl, "--fail", "--silent", "--show-error", "--location", "--max-redirs", "0",
+           "--proto", "=http,https", "--connect-timeout", str(min(15, timeout)),
+           "--max-time", str(timeout), "--max-filesize", str(MAX_RESPONSE_BYTES),
+           "-A", HEADERS["User-Agent"], "-H", "Accept-Encoding: identity"]
+    if insecure_for(url):
+        cmd.append("--insecure")
+    cmd.append(url)
+    proc = subprocess.run(cmd, capture_output=True, timeout=timeout+5)
+    if proc.returncode:
+        raise RuntimeError(f"curl exit {proc.returncode}: {proc.stderr.decode('utf-8', errors='replace')[:300]}")
+    if len(proc.stdout) > MAX_RESPONSE_BYTES:
+        raise ValueError("响应超过大小限制")
     return proc.stdout
 
 
@@ -134,28 +128,27 @@ def fetch_bytes(url: str, timeout: int = 25) -> bytes:
     last_error = None
     for attempt in range(REQUEST_RETRIES):
         try:
+            validate_request_url(url)
             wait_for_host_slot(url)
-            req = Request(url, headers=HEADERS)
-            with urlopen(req, timeout=timeout, context=SSL_CONTEXT) as response:
-                return response.read()
+            context = ssl._create_unverified_context() if insecure_for(url) else SSL_CONTEXT
+            with urlopen(Request(url, headers=HEADERS), timeout=timeout, context=context) as response:
+                validate_request_url(response.geturl())
+                data = response.read(MAX_RESPONSE_BYTES + 1)
+                if len(data) > MAX_RESPONSE_BYTES:
+                    raise ValueError("响应超过大小限制")
+                return data
         except HTTPError as exc:
-            if exc.code == 404:
+            if exc.code not in (408, 429, 500, 502, 503, 504):
                 raise
             last_error = exc
-            if attempt < REQUEST_RETRIES - 1:
-                delay = min(8.0, 0.9 * (2**attempt)) + random.uniform(0.2, 0.8)
-                time.sleep(delay)
+        except (ssl.SSLCertVerificationError, ValueError):
+            raise
         except Exception as exc:
+            if not is_retryable_network_error(exc):
+                raise
             last_error = exc
-            if attempt < REQUEST_RETRIES - 1:
-                delay = min(8.0, 0.9 * (2**attempt)) + random.uniform(0.2, 0.8)
-                time.sleep(delay)
-    if last_error and is_retryable_network_error(last_error):
-        try:
-            wait_for_host_slot(url)
-            return curl_fetch_bytes(url, timeout=timeout)
-        except Exception as curl_exc:
-            raise RuntimeError(f"{last_error}; curl 连接失败: {curl_exc}") from curl_exc
+        if attempt + 1 < REQUEST_RETRIES:
+            time.sleep(1.0)
     raise last_error
 
 
@@ -163,7 +156,10 @@ def decode_response(data: bytes) -> str:
     if not data:
         return ""
     if data.startswith(b"\x1f\x8b"):
-        data = gzip.decompress(data)
+        with gzip.GzipFile(fileobj=io.BytesIO(data)) as stream:
+            data = stream.read(MAX_RESPONSE_BYTES + 1)
+        if len(data) > MAX_RESPONSE_BYTES:
+            raise ValueError("解压后的响应超过大小限制")
     head = data[:3000].decode("ascii", errors="ignore")
     meta = re.search(r"charset=[\"']?([A-Za-z0-9_-]+)", head, re.I)
     encodings = []

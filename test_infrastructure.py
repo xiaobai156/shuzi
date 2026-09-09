@@ -99,10 +99,10 @@ def test_output_repository_keeps_single_and_multi_issue_filenames(tmp_path):
     assert single == (
         str(tmp_path / "211期-杀数字-成功.txt"),
         str(tmp_path / "211期-杀数字-失败.txt"),
-        "211期报告.txt",
+        str(tmp_path / "211期报告.txt"),
     )
     assert multiple == (
         str(tmp_path / "210-211期-杀数字-成功.txt"),
         str(tmp_path / "210-211期-杀数字-失败.txt"),
-        "210-211期报告.txt",
+        str(tmp_path / "210-211期报告.txt"),
     )

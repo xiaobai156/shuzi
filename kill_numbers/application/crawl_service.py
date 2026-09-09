@@ -1,4 +1,5 @@
 import time
+from kill_numbers.acquisition.policy import target_policy
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
@@ -78,14 +79,19 @@ def run_crawl_target(
     return runner(target, list(issues))
 
 
-def run_formal_crawl_target(
+def run_formal_crawl_target(dependencies, target, issues):
+    with target_policy(target, issues):
+        return _run_formal_crawl_target(dependencies, target, issues)
+
+
+def _run_formal_crawl_target(
     dependencies: CrawlDependencies,
     target: dict,
     issues: list[str],
 ) -> tuple[list[CrawlResult], CrawlFailure | None]:
     """Run the sole formal per-site pipeline without letting entrypoints parse data."""
     url = str(target["url"])
-    configured_name = clean_name(target.get("name") or "")
+    configured_name = str(target.get("name") or "").strip() or "未命名"
     content = ""
     name = configured_name
     issue_map: dict[str, list[str]] | None = None
@@ -93,6 +99,8 @@ def run_formal_crawl_target(
     selected_document: SourceDocument | None = None
     selected_documents_by_issue: dict[str, SourceDocument] = {}
 
+    if target.get("disabled"):
+        return [], CrawlFailure(url=url, name=configured_name, reason="目标已停用，禁止抓取")
     risk = manual_risk_reason(target)
     if risk:
         return [], CrawlFailure(
