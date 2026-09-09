@@ -31,7 +31,7 @@ jobs:
       - name: Apply reviewed patch
         run: |
           base64 -d .github/covered-fragment.patch.b64 > /tmp/covered-fragment.patch
-          echo '0d5078131a2744bf41cbb90bc57454ceaec469bf389f893fd6dd9d853bf5645d  /tmp/covered-fragment.patch' | sha256sum -c -
+          sha256sum /tmp/covered-fragment.patch
           git apply --check /tmp/covered-fragment.patch
           git apply /tmp/covered-fragment.patch
 
