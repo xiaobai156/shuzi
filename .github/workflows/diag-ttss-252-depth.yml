@@ -1,4 +1,4 @@
-name: Diagnose TTSS identity rows
+name: Validate TTSS rolling article history
 
 on:
   push:
@@ -21,32 +21,32 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-      - name: Read known identity pages
+      - name: Validate stable identity articles still contain 252
         shell: bash
         run: |
           python - <<'PY'
-          import re
+          from urllib.parse import urljoin
           import crawler
           from kill_numbers.acquisition.policy import target_policy
-          from kill_numbers.acquisition.strategies.linked_pages import topic_links
           from kill_numbers.acquisition.documents import parseable_documents
 
           targets = {t['name']: t for t in crawler.load_targets()}
-          known = {'告别那时': [3, 12], '私房一肖': [8, 17]}
-          for name, pages in known.items():
+          stable = {
+              '告别那时': ('https://a.ttss.vip/article.aspx?id=975082', ['42','03','30','38','04','09','01','27','41','40']),
+              '私房一肖': ('https://a.ttss.vip/article.aspx?id=975015', ['49','30','44','05','14','33','25','34','12','38']),
+          }
+          for name, (url, expected) in stable.items():
               t = targets[name]
-              print(f'=== {name} ===')
-              for page in pages:
-                  url = re.sub(r'([?&]page=)\d+', rf'\g<1>{page}', t['url'])
-                  with target_policy(t, ['252']):
-                      _, docs = crawler.discover_static_documents(url)
-                  rows = []
-                  for doc in parseable_documents(docs):
-                      for href, label in topic_links(doc.content):
-                          clean = ' '.join(label.split())
-                          if name in clean and ('绝杀10码' in clean or '绝杀十码' in clean):
-                              rows.append((href, clean))
-                  print(f'PAGE={page} ROWS={len(rows)}')
-                  for href, label in rows:
-                      print(f'ROW PAGE={page} HREF={href} LABEL={label}')
+              print(f'=== {name} {url} ===')
+              with target_policy(t, ['252']):
+                  article_name, docs = crawler.discover_static_documents(url)
+              print('ARTICLE_NAME=', article_name)
+              print('DOCS=', [(d.kind, d.url, d.priority, d.metadata.get('parseable')) for d in docs])
+              article_target = dict(t)
+              article_target['special_parser'] = 'identity_article_top_10'
+              found, selected = crawler.parse_target_documents(docs, article_target, ['252'])
+              print('FOUND=', found)
+              print('SELECTED=', None if selected is None else (selected.kind, selected.url))
+              if found.get('252') != expected:
+                  raise SystemExit(f'{name} 252号码与历史已验证结果不一致: {found.get("252")}')
           PY
