@@ -133,32 +133,19 @@ def test_paginated_chain_scans_all_pages_and_keeps_detail_evidence(monkeypatch):
     assert seen == [
         LINK_TARGET["url"],
         "https://a.ttss.vip/list.aspx?id=79&page=2",
-        "https://a.ttss.vip/list.aspx?id=79&page=3",
         "https://a.ttss.vip/article.aspx?id=972421",
     ]
 
 
-def test_paginated_chain_rejects_distinct_duplicate_article_links(monkeypatch):
+def test_paginated_chain_rejects_duplicate_current_identity_links(monkeypatch):
     pages = {
         LINK_TARGET["url"]: [
             source(
                 LINK_TARGET["url"],
-                "<a href='list.aspx?id=79&page=2'>下一页</a>",
-            )
-        ],
-        "https://a.ttss.vip/list.aspx?id=79&page=2": [
-            source(
-                "https://a.ttss.vip/list.aspx?id=79&page=2",
                 "<a href='article.aspx?id=972421'>"
-                "218期: 告别那时【绝杀10码】已免费公开</a>"
-                "<a href='list.aspx?id=79&page=3'>下一页</a>",
-            )
-        ],
-        "https://a.ttss.vip/list.aspx?id=79&page=3": [
-            source(
-                "https://a.ttss.vip/list.aspx?id=79&page=3",
+                "219期: 告别那时【绝杀10码】已免费公开</a>"
                 "<a href='article.aspx?id=972420'>"
-                "218期: 告别那时【绝杀10码】已免费公开</a>",
+                "219期: 告别那时【绝杀10码】已免费公开</a>",
             )
         ],
     }
@@ -168,8 +155,73 @@ def test_paginated_chain_rejects_distinct_duplicate_article_links(monkeypatch):
     _results, failure = crawler.crawl_one(LINK_TARGET, ["218"])
 
     assert failure is not None
-    assert "专属链接候选冲突" in failure.reason
+    assert "列表链接候选冲突" in failure.reason
 
+
+def test_paginated_chain_uses_current_identity_article_for_prior_period(monkeypatch):
+    listing_url = LINK_TARGET["url"]
+    article_url = "https://a.ttss.vip/article.aspx?id=975082"
+    rolling_detail = (
+        "<h1>219期: 告别那时【绝杀10码】已免费公开</h1>"
+        "<p>219期 告别那时 : 【01,02,03,04,05,06,07,08,09,10】 开 ?? 准</p>"
+        "<p>218期 告别那时 : 【39,41,02,43,42,46,14,23,31,11】 开 37 准</p>"
+    )
+    pages = {
+        listing_url: [
+            source(
+                listing_url,
+                "<a href='article.aspx?id=975082'>"
+                "219期: 告别那时【绝杀10码】已免费公开</a>",
+            )
+        ],
+        article_url: [source(article_url, rolling_detail)],
+    }
+    seen = []
+
+    def fake_discover(url: str):
+        seen.append(url)
+        return "中彩堂", pages[url]
+
+    monkeypatch.setattr(crawler, "discover_static_documents", fake_discover)
+
+    results, failure = crawler.crawl_one(LINK_TARGET, ["218"])
+
+    assert failure is None
+    assert [result.numbers for result in results] == [
+        ["39", "41", "02", "43", "42", "46", "14", "23", "31", "11"]
+    ]
+    assert results[0].evidence is not None
+    assert results[0].evidence.source_url == article_url
+    assert seen == [listing_url, article_url]
+
+
+def test_paginated_chain_keeps_article_position_window_strict(monkeypatch):
+    target = {**LINK_TARGET, "issue_position_window": 1}
+    listing_url = target["url"]
+    article_url = "https://a.ttss.vip/article.aspx?id=975082"
+    pages = {
+        listing_url: [
+            source(
+                listing_url,
+                "<a href='article.aspx?id=975082'>"
+                "219期: 告别那时【绝杀10码】已免费公开</a>",
+            )
+        ],
+        article_url: [
+            source(
+                article_url,
+                "<h1>219期: 告别那时【绝杀10码】已免费公开</h1>"
+                "<p>219期 告别那时 : 【01,02,03,04,05,06,07,08,09,10】 开 ?? 准</p>"
+                "<p>218期 告别那时 : 【39,41,02,43,42,46,14,23,31,11】 开 37 准</p>",
+            )
+        ],
+    }
+    monkeypatch.setattr(crawler, "discover_static_documents", lambda url: ("中彩堂", pages[url]))
+
+    _results, failure = crawler.crawl_one(target, ["218"])
+
+    assert failure is not None
+    assert "顶部窗口" in failure.reason
 
 def test_paginated_chain_treats_disabled_next_link_as_terminal(monkeypatch):
     listing_url = LINK_TARGET["url"]

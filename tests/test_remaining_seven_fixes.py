@@ -271,36 +271,56 @@ def test_acquisition_only_current_window_stays_strict(monkeypatch):
     ]
 
 
-def test_acquisition_only_history_discovers_paginated_ttss_links(monkeypatch):
+def test_acquisition_only_history_uses_current_ttss_identity_article(monkeypatch):
     target = {
-        **site("告别那时", "https://a.test/list?page=1"),
-        "special_parser": "ttss_paginated_identity_top_10",
+        "url": "https://a.test/list?page=1",
+        "name": "告别那时",
         "link_keywords": ["告别那时", "【绝杀10码】"],
+        "keywords": ["绝杀10码"],
+        "count": 10,
+        "region": "top",
+        "anchor": "告别那时",
+        "article_identity": "告别那时",
+        "issue_position_window": 5,
+        "special_parser": "ttss_paginated_identity_top_10",
         "pagination_limit": 3,
         "pagination_next_text": "下一页",
         "_history_discovery": True,
         "_history_depth": 10,
     }
-    page1 = _link_document(
-        target["url"],
-        [(issue, "告别那时 【绝杀10码】") for issue in range(215, 210, -1)],
-        "/list?page=2",
+    article_url = "https://a.test/article?id=current"
+    page1 = make_source_document(
+        kind="page",
+        url=target["url"],
+        content=(
+            "<a href='/article?id=current'>"
+            "215期: 告别那时【绝杀10码】已免费公开</a>"
+        ),
+        priority=100,
+        metadata={"parseable": True},
     )
-    page2_url = "https://a.test/list?page=2"
-    page2 = _link_document(
-        page2_url,
-        [(issue, "告别那时 【绝杀10码】") for issue in range(210, 205, -1)],
+    rows = "".join(
+        f"<p>{issue}期 告别那时 : 【01,02,03,04,05,06,07,08,09,"
+        f"{10 + (215 - issue):02d}】 开 ?? 准</p>"
+        for issue in range(215, 205, -1)
     )
-    pages = {target["url"]: page1, page2_url: page2}
+    article = make_source_document(
+        kind="page",
+        url=article_url,
+        content="<h1>215期: 告别那时【绝杀10码】已免费公开</h1>" + rows,
+        priority=100,
+        metadata={"parseable": True},
+    )
+    pages = {target["url"]: page1, article_url: article}
     monkeypatch.setattr(
         crawler,
         "discover_static_documents",
         lambda url: ("列表", [pages[url]]),
     )
+
     assert crawler.available_issues_for_acquisition_target(target) == [
         str(issue) for issue in range(215, 205, -1)
     ]
-
 
 def test_snapshot_for_acquisition_only_does_not_call_generic_fetch(monkeypatch):
     target = {
