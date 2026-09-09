@@ -17,30 +17,30 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-      - name: Inspect certificate and verified alternate names
+      - name: Test certificate-authorized migrated hosts
         shell: bash
         run: |
-          host='nlafoq9v.dh5565656.xyz'
-          echo | openssl s_client -connect "$host:443" -servername "$host" -showcerts 2>/dev/null | openssl x509 -noout -subject -issuer -ext subjectAltName > cert.txt
-          cat cert.txt
           python - <<'PY'
-          import re, ssl, socket
-          from pathlib import Path
+          import re, ssl
           from urllib.request import Request, urlopen
-          cert=Path('cert.txt').read_text(errors='replace')
-          names=[]
-          for name in re.findall(r'DNS:([^,\s]+)',cert):
-              if '*' not in name and name not in names:
-                  names.append(name)
-          print('SAN_NAMES=',names)
+          hosts=[
+              'nlafoq9v.552149.shop',
+              'nlafoq9v.552148bbs1.shop',
+              'nlafoq9v.552149bbs2.shop',
+          ]
           path='/bbs/topic.php?id=939'
-          for host in names:
+          for host in hosts:
               url='https://'+host+path
               try:
                   req=Request(url,headers={'User-Agent':'Mozilla/5.0'})
                   with urlopen(req,timeout=20,context=ssl.create_default_context()) as r:
-                      data=r.read(2*1024*1024).decode('gb18030',errors='replace')
-                      print('CANDIDATE',url,'STATUS',getattr(r,'status',None),'FINAL',r.geturl(),'LEN',len(data),'ANCHOR',('澳彩总站' in data),'IDENTITY',('钱彩两得' in data),'ISSUE252',bool(re.search(r'(?<!\\d)0?252\\s*期',data)))
+                      data=r.read(3*1024*1024).decode('gb18030',errors='replace')
+                      print('CANDIDATE',url,'STATUS',getattr(r,'status',None),'FINAL',r.geturl(),'LEN',len(data),
+                            'ANCHOR',('澳彩总站' in data),'IDENTITY',('钱彩两得' in data),
+                            'ISSUE252',bool(re.search(r'(?<!\\d)0?252\\s*期',data)))
+                      if '钱彩两得' in data or '252期' in data:
+                          idx=max(data.find('钱彩两得'),data.find('252期'))
+                          print('SNIPPET',re.sub(r'\\s+',' ',data[max(0,idx-300):idx+1200]))
               except Exception as exc:
                   print('CANDIDATE',url,'ERROR',type(exc).__name__,exc)
           PY
