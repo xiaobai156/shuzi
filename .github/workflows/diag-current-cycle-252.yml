@@ -1,0 +1,72 @@
+name: Diagnose current-cycle 252 page
+
+on:
+  push:
+    branches:
+      - diag/252-current-cycle-20260909
+
+permissions:
+  contents: read
+
+jobs:
+  diag:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      PYTHONUTF8: '1'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: diag/252-current-cycle-20260909
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Inspect current-cycle source structure
+        run: |
+          python - <<'PY'
+          import re
+          import crawler
+          from kill_numbers.acquisition.policy import target_policy
+          from kill_numbers.acquisition.documents import parseable_documents
+          from kill_numbers.text_utils import html_to_text, normalize_issue, normalize_keyword
+          from kill_numbers.parsing.common import all_issue_segment_matches, find_anchor_index, find_last_anchor_index_before, find_number_groups, valid_number, has_duplicate_numbers
+          from kill_numbers.domain.periods import rollover_seam_indices
+
+          target = next(t for t in crawler.load_targets() if t['name'] == '不可或缺')
+          print('TARGET', target)
+          with target_policy(target, ['252']):
+              name, docs = crawler.fetch_target_documents(target, ['252'])
+          print('NAME', name, 'DOCS', [(d.kind,d.priority,d.url,len(d.content)) for d in docs])
+          for doc in sorted(parseable_documents(docs), key=lambda d:d.priority, reverse=True):
+              print('\n===== DOC',doc.kind,doc.priority,doc.url,'=====')
+              try:
+                  print('PARSED', crawler.parse_target_content(doc.content, target, ['252']))
+              except Exception as exc:
+                  print('PARSE_ERROR',type(exc).__name__,exc)
+              text=html_to_text(doc.content)
+              author=find_anchor_index(text,target.get('anchor') or '')
+              title=find_last_anchor_index_before(text,target.get('article_title_anchor') or '',author)
+              stop=find_anchor_index(text,target.get('stop_anchor') or '',start=author+1) if author>=0 else -1
+              print('BOUNDARIES','title',title,'author',author,'stop',stop)
+              if title>=0 and author>=0:
+                  print('TITLE_TEXT',repr(text[title:author]))
+              if author<0 or stop<0:
+                  continue
+              section=text[author:stop]
+              keywords=[normalize_keyword(x) for x in target.get('keywords',[]) if x]
+              rows=[]
+              for match in all_issue_segment_matches(section):
+                  segment=match.group(0)
+                  compact=normalize_keyword(segment)
+                  if keywords and not any(k in compact for k in keywords):
+                      continue
+                  groups=[g for g in find_number_groups(segment)
+                          if len(g)==target['count'] and all(valid_number(n) for n in g)
+                          and not has_duplicate_numbers(g)]
+                  for group in groups:
+                      rows.append((normalize_issue(match.group(1)),group,match.start()))
+              print('ROW_COUNT',len(rows))
+              print('ROW_ISSUES',[r[0] for r in rows])
+              print('SEAMS',rollover_seam_indices([r[0] for r in rows],target))
+              print('252_ROWS',[r for r in rows if r[0]=='252'])
+          PY
