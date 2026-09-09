@@ -1,0 +1,81 @@
+name: Verify content-class 252 fix
+
+on:
+  push:
+    branches:
+      - run/252-content-class-verify-20260909
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      PYTHONUTF8: '1'
+      SHUZI_RESULTS_DIR: /tmp/shuzi-content-class-results
+      SHUZI_BROWSER_CONCURRENCY: '2'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: run/252-content-class-verify-20260909
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install tests
+        run: python -m pip install -r requirements-test.txt
+      - name: Compile and regress
+        run: |
+          python -m compileall -q crawler.py check_duplicates.py retry_failed.py run_crawler_prompt.py run_crawler_multi_prompt.py kill_numbers tests test_*.py
+          git diff --check
+          python -m pytest -q
+      - name: Install Chromium
+        run: |
+          python -m pip install playwright
+          python -m playwright install --with-deps chromium
+      - name: Real Chromium smoke
+        env:
+          RUN_BROWSER_SMOKE: '1'
+        run: python -m pytest -q tests/test_browser_smoke.py
+      - name: Live 252 without cache
+        shell: bash
+        run: |
+          rm -rf "$SHUZI_RESULTS_DIR"
+          mkdir -p "$SHUZI_RESULTS_DIR"
+          set +e
+          python crawler.py --issues 252 --workers 16 --no-cache-update
+          code=$?
+          set -e
+          echo "CRAWL_EXIT=$code" >> "$GITHUB_ENV"
+      - name: Verify business invariants
+        run: |
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          root=Path(os.environ['SHUZI_RESULTS_DIR'])
+          sp=root/'252期-杀数字-成功.txt'
+          fp=root/'252期-杀数字-失败.txt'
+          success_lines=[x.strip() for x in sp.read_text(encoding='utf-8-sig').splitlines() if x.strip()] if sp.is_file() else []
+          failure_lines=[x.strip() for x in fp.read_text(encoding='utf-8-sig').splitlines() if x.strip()] if fp.is_file() else []
+          success_names={x.split(maxsplit=1)[1] for x in success_lines if len(x.split(maxsplit=1))==2}
+          required_success={'安身立命','六合稳杀十码','六合稳杀七码'}
+          required_failure={'文武双全','一诺千金','雨过天晴'}
+          missing=required_success-success_names
+          wrongly_passed=required_failure & success_names
+          summary={'success':len(success_lines),'failure':len(failure_lines),'active':len(success_lines)+len(failure_lines),'missing_required_success':sorted(missing),'wrongly_passed':sorted(wrongly_passed),'crawler_exit':int(os.environ.get('CRAWL_EXIT','-1'))}
+          (root/'verify-summary.json').write_text(json.dumps(summary,ensure_ascii=False,indent=2),encoding='utf-8')
+          print(json.dumps(summary,ensure_ascii=False))
+          if summary['active'] != 161: raise SystemExit('did not account for all 161 targets')
+          if summary['success'] < 129: raise SystemExit('regressed below 129-success baseline')
+          if missing: raise SystemExit('content-class targets did not recover: '+','.join(sorted(missing)))
+          if wrongly_passed: raise SystemExit('duplicate-number targets were incorrectly accepted: '+','.join(sorted(wrongly_passed)))
+          PY
+      - name: Upload result
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: content-class-live-252
+          path: /tmp/shuzi-content-class-results
+          if-no-files-found: warn
+          retention-days: 2
