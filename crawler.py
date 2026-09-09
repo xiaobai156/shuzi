@@ -233,6 +233,11 @@ def load_targets(path: Path = TARGETS_FILE) -> list[dict]:
         if not isinstance(item, dict) or not item.get("url"):
             raise ValueError(f"targets.json 第 {index} 条缺少 url")
         special_parser = item.get("special_parser")
+        if item.get('content_class') is not None and (
+            item['content_class'] not in {'content', 'topic-content', 'd-content'}
+            or special_parser or item.get('stop_anchor') or not item.get('anchor')
+        ):
+            raise ValueError(f"targets.json 第 {index} 条正文容器契约无效")
         if special_parser is not None and (
             not isinstance(special_parser, str)
             or special_parser not in VALID_SPECIAL_PARSERS

@@ -582,13 +582,16 @@
   {
     "url": "https://t59nd.prm9k-tor19-vowopt.xyz/topic/206668.html",
     "name": "无庸赘述",
+    "content_class": "topic-content",
+    "allowed_source_types": [
+      "decoded_script"
+    ],
     "keywords": [
       "杀8码"
     ],
     "count": 8,
     "region": "bottom",
     "anchor": "作者:无庸赘述",
-    "stop_anchor": "document.writeln",
     "issue_position_window": 5
   },
   {
@@ -636,13 +639,16 @@
   {
     "url": "https://avfzesda.v3g7d-e00td-idgbab.xyz:16677/topic/472398.html",
     "name": "天公作美",
+    "content_class": "content",
+    "allowed_source_types": [
+      "decoded_script"
+    ],
     "keywords": [
       "绝杀10码"
     ],
     "count": 10,
     "region": "top",
     "anchor": "天公作美 发表于",
-    "stop_anchor": "上一篇：",
     "issue_position_window": 5
   },
   {
@@ -758,25 +764,29 @@
   {
     "url": "https://tetinte.nzxzd-cfket-xtgznp.xyz:16677/topic/592476.html",
     "name": "六合稳杀十码",
+    "content_class": "topic-content",
     "keywords": [
       "稳杀十码"
     ],
     "count": 10,
     "region": "bottom",
     "anchor": "稳杀十码",
-    "stop_anchor": "document.writeln",
-    "issue_position_window": 5
+    "issue_position_window": 5,
+    "browser": true
   },
   {
     "url": "https://tetinte.nzxzd-cfket-xtgznp.xyz:16677/topic/592474.html",
     "name": "六合稳杀七码",
+    "content_class": "topic-content",
+    "allowed_source_types": [
+      "decoded_script"
+    ],
     "keywords": [
       "精杀7.码"
     ],
     "count": 7,
     "region": "bottom",
     "anchor": "精杀7.码",
-    "stop_anchor": "document.writeln",
     "issue_position_window": 5
   },
   {
@@ -817,6 +827,10 @@
   {
     "url": "https://lkjguap.krocy-ah6dv-kgkpjm.xyz:16677/topic/287350.html",
     "name": "一点朱砂",
+    "content_class": "content",
+    "allowed_source_types": [
+      "decoded_script"
+    ],
     "keywords": [
       "绝杀10码",
       "绝杀十码"
@@ -824,7 +838,6 @@
     "count": 10,
     "region": "top",
     "anchor": "一点朱砂 发表于",
-    "stop_anchor": "上一篇：",
     "issue_position_window": 5
   },
   {
@@ -2344,5 +2357,304 @@
       "valid_history_issues": ["218", "217", "215", "214", "213"],
       "missing_history_issues": ["216"]
     }
+  },
+  {
+    "url": "https://kk.01495252a.com:1888/bbs/gsb4",
+    "name": "摇钱树第二",
+    "keywords": [
+      "绝杀10码"
+    ],
+    "count": 10,
+    "region": "top",
+    "anchor": "摇钱树精选【杀10码】",
+    "issue_position_window": 10,
+    "browser": true
+  },
+  {
+    "url": "https://i97lk4jb16.333741bbs1.shop/bbs/topic.php?id=2868",
+    "name": "安身立命",
+    "content_class": "content",
+    "keywords": [
+      "绝杀十码",
+      "绝杀10码"
+    ],
+    "count": 10,
+    "region": "bottom",
+    "anchor": "安身立命",
+    "issue_position_window": 10
+  },
+  {
+    "url": "https://12388990827.794555.xyz/bbs/topic.php?id=21351",
+    "name": "舒舒服服",
+    "content_class": "content",
+    "keywords": [
+      "绝杀十码",
+      "绝杀10码"
+    ],
+    "count": 10,
+    "region": "bottom",
+    "anchor": "舒舒服服",
+    "issue_position_window": 10,
+    "onboarding_exception": {
+      "type": "user_special_addition",
+      "approved": true,
+      "scope": "用户明确特例添加；仅放宽正式缓存4个既有235期失败导致的判重未完成；候选站230至239期真实记录未发现连续3期以上重复",
+      "validated_issue": "239",
+      "valid_history_issues": [
+        "230",
+        "231",
+        "232",
+        "233",
+        "234",
+        "235",
+        "236",
+        "237",
+        "238",
+        "239"
+      ],
+      "missing_history_issues": [],
+      "cache_failures_bypassed": [
+        "六合绝杀十码 235期",
+        "六合稳杀十码 235期",
+        "六合稳杀七码 235期",
+        "花仙子 235期"
+      ]
+    }
+  },
+  {
+    "url": "https://12388990827.794555.xyz/bbs/topic.php?id=21013",
+    "name": "云海尘清",
+    "content_class": "content",
+    "keywords": [
+      "绝杀十码",
+      "绝杀10码"
+    ],
+    "count": 10,
+    "region": "bottom",
+    "anchor": "云海尘清",
+    "issue_position_window": 10,
+    "onboarding_exception": {
+      "type": "user_special_addition",
+      "approved": true,
+      "scope": "用户明确特例添加；仅放宽正式缓存4个既有235期失败导致的判重未完成；候选站230至239期真实记录未发现连续3期以上重复",
+      "validated_issue": "239",
+      "valid_history_issues": [
+        "230",
+        "231",
+        "232",
+        "233",
+        "234",
+        "235",
+        "236",
+        "237",
+        "238",
+        "239"
+      ],
+      "missing_history_issues": [],
+      "cache_failures_bypassed": [
+        "六合绝杀十码 235期",
+        "六合稳杀十码 235期",
+        "六合稳杀七码 235期",
+        "花仙子 235期"
+      ]
+    }
+  },
+  {
+    "url": "https://11008880827.876657.xyz/bbs/topic.php?id=20371",
+    "name": "人才辈出",
+    "content_class": "content",
+    "keywords": [
+      "绝杀十码",
+      "绝杀10码"
+    ],
+    "count": 10,
+    "region": "bottom",
+    "anchor": "人才辈出",
+    "issue_position_window": 10,
+    "onboarding_exception": {
+      "type": "user_special_addition",
+      "approved": true,
+      "scope": "用户明确特例添加；仅放宽正式缓存4个既有235期失败导致的判重未完成；候选站230至239期真实记录未发现连续3期以上重复",
+      "validated_issue": "239",
+      "valid_history_issues": [
+        "230",
+        "231",
+        "232",
+        "233",
+        "234",
+        "235",
+        "236",
+        "237",
+        "238",
+        "239"
+      ],
+      "missing_history_issues": [],
+      "cache_failures_bypassed": [
+        "六合绝杀十码 235期",
+        "六合稳杀十码 235期",
+        "六合稳杀七码 235期",
+        "花仙子 235期"
+      ]
+    }
+  },
+  {
+    "url": "https://niqyf.77cz0-qzyks-ofhmfh.work/topic/206370.html",
+    "name": "此发彼应",
+    "content_class": "topic-content",
+    "keywords": [
+      "杀十码"
+    ],
+    "count": 10,
+    "region": "top",
+    "issue_position_region": "top",
+    "anchor": "作者:此发彼应",
+    "issue_position_window": 10,
+    "allowed_source_types": [
+      "decoded_script"
+    ]
+  },
+  {
+    "url": "https://w4shq9.wc5vp-jujau-joiqes.cyou/topic/300219.html",
+    "name": "易洗鲨鱼",
+    "content_class": "topic-content",
+    "keywords": [
+      "绝杀10码"
+    ],
+    "count": 10,
+    "region": "top",
+    "issue_position_region": "top",
+    "anchor": "作者:易洗鲨鱼",
+    "issue_position_window": 10,
+    "allowed_source_types": [
+      "decoded_script"
+    ]
+  },
+  {
+    "url": "https://etmchyhq.cee5t-w30bf-xgqspr.work:17477/topic/248524.html",
+    "name": "门主立邦",
+    "content_class": "d-content",
+    "keywords": [
+      "绝杀10码"
+    ],
+    "count": 10,
+    "region": "top",
+    "issue_position_region": "top",
+    "anchor": "门主立邦",
+    "issue_position_window": 10,
+    "allowed_source_types": [
+      "decoded_script"
+    ]
+  },
+  {
+    "url": "https://etmchyhq.cee5t-w30bf-xgqspr.work:17477/topic/465953.html",
+    "name": "小时了了",
+    "content_class": "d-content",
+    "keywords": [
+      "主杀"
+    ],
+    "count": 10,
+    "region": "top",
+    "issue_position_region": "top",
+    "anchor": "小时了了",
+    "issue_position_window": 10,
+    "allowed_source_types": [
+      "decoded_script"
+    ]
+  },
+  {
+    "url": "https://whsbrmz.qclrc-4mk42-vnxbyg.work:16677/topic/465155.html",
+    "name": "百里挑一",
+    "content_class": "d-content",
+    "keywords": [
+      "绝杀10码"
+    ],
+    "count": 10,
+    "region": "top",
+    "issue_position_region": "top",
+    "anchor": "百里挑一",
+    "issue_position_window": 10,
+    "allowed_source_types": [
+      "decoded_script"
+    ]
+  },
+  {
+    "url": "https://tlwggkde.dp86b-grpqw-uiiazp.work:17466/topic/247739.html",
+    "name": "聚宝十二",
+    "content_class": "d-content",
+    "keywords": [
+      "绝杀12码"
+    ],
+    "count": 12,
+    "region": "top",
+    "issue_position_region": "top",
+    "anchor": "高手猛料",
+    "issue_position_window": 10,
+    "allowed_source_types": [
+      "decoded_script"
+    ]
+  },
+  {
+    "url": "https://tlwggkde.dp86b-grpqw-uiiazp.work:17466/topic/247755.html",
+    "name": "聚宝十",
+    "content_class": "d-content",
+    "keywords": [
+      "绝杀十码"
+    ],
+    "count": 10,
+    "region": "top",
+    "issue_position_region": "top",
+    "anchor": "高手猛料",
+    "issue_position_window": 10,
+    "allowed_source_types": [
+      "decoded_script"
+    ]
+  },
+  {
+    "url": "https://hdwgkhut.o3oor-kcr2c-bmrcxq.work:17488/topic/280560.html",
+    "name": "人在江湖",
+    "content_class": "content",
+    "keywords": [
+      "绝杀10码"
+    ],
+    "count": 10,
+    "region": "top",
+    "issue_position_region": "top",
+    "anchor": "人在江湖 发表于",
+    "issue_position_window": 10,
+    "allowed_source_types": [
+      "decoded_script"
+    ]
+  },
+  {
+    "url": "https://yxxeuvic.s7zfu-f3ymk-shmtnv.cyou:17477/topic/479503.html",
+    "name": "人非土木",
+    "content_class": "topic-content",
+    "keywords": [
+      "杀"
+    ],
+    "count": 10,
+    "region": "top",
+    "issue_position_region": "top",
+    "anchor": "作者:人非土木",
+    "issue_position_window": 10,
+    "allowed_source_types": [
+      "decoded_script"
+    ]
+  },
+  {
+    "url": "https://gboqrz.9nd7w-317gv-gsktxy.cyou/topic/192047.html",
+    "name": "片羽吉光",
+    "content_class": "topic-content",
+    "keywords": [
+      "杀十码"
+    ],
+    "count": 10,
+    "region": "top",
+    "issue_position_region": "top",
+    "anchor": "作者:片羽吉光",
+    "issue_position_window": 10,
+    "allowed_source_types": [
+      "decoded_script"
+    ]
   }
 ]

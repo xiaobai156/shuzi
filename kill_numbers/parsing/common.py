@@ -185,7 +185,7 @@ def find_number_groups(segment: str) -> list[list[str]]:
         # Match the ENTIRE numeric run. Never trim 00/50 or a third digit to
         # manufacture a valid count from an invalid group.
         for match in re.finditer(
-            r"(?<!\d)\d+(?:[\s.,，。、;；|/\\]+\d+){2,}(?!\d)",
+            r"(?<!\d)\d+(?:[\s.,，。、;；|/\\-]+\d+){2,}(?!\d)",
             source.replace("杀", " "),
         ):
             nums = re.findall(r"\d+", match.group(0))

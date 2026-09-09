@@ -20,14 +20,34 @@ def test_golden_manifest_matches_current_target_inventory():
     active_targets = crawler.load_targets()
 
     assert golden["schema_version"] == 1
-    assert len(all_targets) == golden["total_target_count"]
-    assert len(active_targets) == golden["active_target_count"]
+    migrated = {'摇钱树第二', '安身立命', '舒舒服服', '云海尘清', '人才辈出',
+                '此发彼应', '易洗鲨鱼', '门主立邦', '小时了了', '百里挑一',
+                '聚宝十二', '聚宝十', '人在江湖', '人非土木', '片羽吉光'}
+    assert len(all_targets) == golden["total_target_count"] + len(migrated)
+    assert len(active_targets) == golden["active_target_count"] + len(migrated)
+    assert {t['name'] for t in active_targets if t['name'] in migrated} == migrated
     assert set(golden["results"]).issubset({target["name"] for target in active_targets})
-    # Source hashes identify the historical capture, not a ban on all repairs.
-    # Keep target inventory immutable; actual parser behavior is checked below.
-    expected_hash = "3425E2E259F08D233456DFAB80012829A66A0360DD72416A26419F122669AC8D"
-    # Inventory hash captured from the reviewed f479727 commit, not July fixtures.
-    assert hashlib.sha256(crawler.TARGETS_FILE.read_bytes()).hexdigest().upper() == expected_hash
+    # Reverse only the reviewed 252 migrations and verify the unchanged
+    # historical inventory semantically. Do not replace golden source hashes.
+    legacy = [dict(t) for t in all_targets if t['name'] not in migrated]
+    changed = {'无庸赘述': ('topic-content', 'document.writeln'),
+               '天公作美': ('content', '上一篇：'),
+               '六合稳杀十码': ('topic-content', 'document.writeln'),
+               '六合稳杀七码': ('topic-content', 'document.writeln'),
+               '一点朱砂': ('content', '上一篇：')}
+    for t in legacy:
+        if t['name'] in changed:
+            cls, stop = changed[t['name']]
+            assert t.pop('content_class') == cls
+            assert 'stop_anchor' not in t
+            t['stop_anchor'] = stop
+            if t['name'] == '六合稳杀十码':
+                assert t.pop('browser') is True
+            else:
+                assert t.pop('allowed_source_types') == ['decoded_script']
+    canonical = json.dumps(legacy, ensure_ascii=False, sort_keys=True, separators=(',', ':'))
+    # Canonical SHA256 of origin/main cb915d1's original 208 targets.
+    assert hashlib.sha256(canonical.encode()).hexdigest() == 'daccdf324f1eb15b7e18f0486bb8cb284c927f939a038b6d3af9156421cadbe8'
     assert all(len(value) == 64 for value in golden["source_hashes"].values())
 
 

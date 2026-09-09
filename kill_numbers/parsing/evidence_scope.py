@@ -2,6 +2,7 @@
 import re
 
 from kill_numbers.parsing import dedicated
+from kill_numbers.parsing.dom_scope import content_section
 from kill_numbers.parsing.dedicated import site_parsers as sites
 from kill_numbers.parsing.common import (
     candidate_rows, find_anchor_index, html_to_text, normalize_issue,
@@ -12,6 +13,9 @@ from kill_numbers.parsing.common import (
 def evidence_section(content: str, target: dict) -> tuple[str, str, int]:
     parser = target.get("special_parser", "")
     text = html_to_text(content)
+    if target.get("content_class"):
+        section, offset = content_section(content, target)
+        return text, section, offset
     if parser == "identity_article_bottom_10":
         text = sites.normalize_identity_article_current_placeholder(text, target)
     section = None

@@ -3,6 +3,7 @@ from dataclasses import dataclass
 
 from kill_numbers.parsing.common import extract_issue_numbers
 from kill_numbers.parsing.diagnostics import detect_available_issues
+from kill_numbers.parsing.dom_scope import content_section
 from kill_numbers.parsing.dedicated import site_parsers as dedicated
 
 
@@ -17,6 +18,9 @@ class ParserAdapter:
 
 
 def parse_generic(content: str, issues: list[str], target: dict) -> dict[str, list[str]]:
+    if target.get("content_class"):
+        content, _offset = content_section(content, target)
+        target = {**target, "anchor": None, "stop_anchor": None}
     return extract_issue_numbers(
         content,
         issues,
@@ -34,6 +38,9 @@ def parse_generic(content: str, issues: list[str], target: dict) -> dict[str, li
 
 
 def available_generic(content: str, target: dict) -> list[str]:
+    if target.get("content_class"):
+        content, _offset = content_section(content, target)
+        target = {**target, "anchor": None, "stop_anchor": None}
     return detect_available_issues(
         content,
         keywords=target.get("keywords"),
