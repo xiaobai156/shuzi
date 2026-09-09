@@ -1,4 +1,4 @@
-name: Verify browser-root migrations
+name: Inspect root identity snippets
 
 on:
   push:
@@ -9,12 +9,11 @@ permissions:
   contents: read
 
 jobs:
-  verify:
+  inspect:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 10
     env:
       PYTHONUTF8: '1'
-      SHUZI_BROWSER_CONCURRENCY: '2'
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -24,28 +23,33 @@ jobs:
         run: |
           python -m pip install playwright
           python -m playwright install chromium
-      - name: Verify candidate roots through production crawler
+      - name: Print exact identity neighborhoods
         shell: bash
         run: |
           python - <<'PY'
-          import crawler
-          from kill_numbers.acquisition.policy import target_policy
-          targets={t['name']:t for t in crawler.load_targets()}
+          import re
+          from playwright.sync_api import sync_playwright
           root='https://szfzml.mfuw8-bnsfa-gdaxhk.xyz/'
-          candidates=['寿比南山','弦无虚发','博彩兵书']
-          for name in candidates:
-              t=dict(targets[name])
-              t['url']=root
-              t['browser']=True
-              print(f'\n=== {name} ===')
-              try:
-                  with target_policy(t,['252']):
-                      fetched_name,docs=crawler.fetch_target_documents(t,['252'])
-                  print('FETCH_NAME',fetched_name)
-                  print('PARSEABLE',[(d.kind,d.url,d.priority,d.metadata) for d in docs if d.metadata.get('parseable')])
-                  found,selected=crawler.parse_target_documents(docs,t,['252'])
-                  print('FOUND',found)
-                  print('SELECTED',None if selected is None else (selected.kind,selected.url,selected.priority,selected.metadata))
-              except Exception as exc:
-                  print('ERROR',type(exc).__name__,exc)
+          with sync_playwright() as p:
+              b=p.chromium.launch(headless=True)
+              page=b.new_page()
+              page.goto(root,wait_until='domcontentloaded',timeout=15000)
+              try: page.wait_for_load_state('networkidle',timeout=7000)
+              except Exception: pass
+              body=page.locator('body').inner_text()
+              lines=[line.strip() for line in body.splitlines() if line.strip()]
+              print('LINES',len(lines),'BODY_LEN',len(body))
+              for name in ['寿比南山','弦无虚发','博彩兵书']:
+                  print(f'\n=== {name} ===')
+                  idxs=[i for i,line in enumerate(lines) if name in line]
+                  print('IDENTITY_LINE_INDEXES',idxs)
+                  for idx in idxs:
+                      lo=max(0,idx-8); hi=min(len(lines),idx+35)
+                      print('--- NEIGHBORHOOD',idx,'---')
+                      for j in range(lo,hi): print(f'{j:04d}: {lines[j]}')
+              print('\n=== ALL 252 LINES ===')
+              for i,line in enumerate(lines):
+                  if re.search(r'(?<!\d)0?252\s*期(?!\d)',line):
+                      print(f'{i:04d}: {line}')
+              b.close()
           PY
