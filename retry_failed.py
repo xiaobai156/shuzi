@@ -5,6 +5,7 @@ from pathlib import Path
 import crawler
 from kill_numbers.infrastructure.file_store import atomic_write_text
 from run_lock import exclusive_run_lock
+from kill_numbers.validation.result_validator import validate_crawl_results
 
 def _write_bytes(path: Path, data: bytes) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -19,7 +20,7 @@ def _write_bytes(path: Path, data: bytes) -> None:
 LINE = re.compile(r"^(?:\[[^]]+\]\s+)?(?P<name>.+?)\s+(?:(?P<region>top|bottom)\s+)?(?P<url>https?://\S+)\s+.*$")
 
 def retry_failed_file(failure_file: Path, issue: str) -> tuple[int, int, int]:
-    expected = re.search(r"(\d+)期-杀数字-失败\.txt$", failure_file.name)
+    expected = re.fullmatch(r"(\d+)期-杀数字-失败\.txt", failure_file.name)
     if not expected or expected.group(1) != str(issue):
         print("失败文件与期数不一致"); return 0, 0, 2
     raw = failure_file.read_bytes() if failure_file.exists() else None
@@ -50,7 +51,7 @@ def retry_failed_file(failure_file: Path, issue: str) -> tuple[int, int, int]:
             if key in jobs: jobs[key][0].extend(x for x in indexes if x not in jobs[key][0])
             else: jobs[key] = (indexes, found[0])
         else:
-            if original.strip() and i not in block_for: unmatched += 1
+            if original.strip(): unmatched += 1
     if not jobs: print("没有可重抓的失败站点"); return 0, 0, 2 if unmatched else 0
     keep = set(range(len(lines))); completed = 0; success_count = 0; removed = False; original_debug = crawler.save_debug_page
     crawler.save_debug_page = lambda *a, **k: None
@@ -58,6 +59,10 @@ def retry_failed_file(failure_file: Path, issue: str) -> tuple[int, int, int]:
         for indexes, target in jobs.values():
             try:
                 results, failure = crawler.crawl_one(target, [issue])
+                results, validation_error = validate_crawl_results(target, [issue], results, failure)
+                if validation_error:
+                    print(f"[{target.get('name')}] 本轮校验失败：{validation_error}")
+                    continue
                 if failure or not results:
                     if failure: print(f"[{target.get('name')}] 本轮失败：{failure.reason}")
                     continue
@@ -74,7 +79,10 @@ def retry_failed_file(failure_file: Path, issue: str) -> tuple[int, int, int]:
                 if not conflict:
                     if added:
                         ending = b"\r\n" if b"\r\n" in old_bytes else b"\n"
-                        _write_bytes(result_file, old_bytes + ending.join(x.encode() for x in added) + ending)
+                        separator = ending if old_bytes and not old_bytes.endswith((b"\r", b"\n")) else b""
+                        if result_file.exists() and result_file.read_bytes() != old_bytes:
+                            raise OSError("成功TXT在处理期间被修改，停止覆盖")
+                        _write_bytes(result_file, old_bytes + separator + ending.join(x.encode() for x in added) + ending)
                     success_count += 1
                     for index in indexes: keep.discard(index)
                     removed = True
