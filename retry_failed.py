@@ -6,6 +6,10 @@ import crawler
 from kill_numbers.infrastructure.file_store import atomic_write_text
 from run_lock import exclusive_run_lock
 from kill_numbers.validation.result_validator import validate_crawl_results
+from kill_numbers.infrastructure.run_manifest import (
+    read_run_manifest_for_retry,
+    refresh_run_manifest_after_retry,
+)
 
 def _write_bytes(path: Path, data: bytes) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -25,6 +29,15 @@ def retry_failed_file(failure_file: Path, issue: str) -> tuple[int, int, int]:
         print("失败文件与期数不一致"); return 0, 0, 2
     raw = failure_file.read_bytes() if failure_file.exists() else None
     if raw is None: print(f"失败文件不存在：{failure_file}"); return 0, 0, 2
+    result_file = crawler.RESULTS_DIR / f"{issue}期-杀数字-成功.txt"
+    manifest_file = crawler.manifest_path_for_issue(issue)
+    manifest = None
+    if manifest_file.is_file():
+        try:
+            manifest = read_run_manifest_for_retry(manifest_file, issue)
+        except ValueError as exc:
+            print(f"运行清单已失效，停止重抓以免继续破坏文件证据：{exc}")
+            return 0, 0, 2
     try: text = raw.decode("utf-8-sig")
     except UnicodeDecodeError:
         print("失败 TXT 编码错误"); return 0, 0, 2
@@ -54,6 +67,7 @@ def retry_failed_file(failure_file: Path, issue: str) -> tuple[int, int, int]:
             if original.strip(): unmatched += 1
     if not jobs: print("没有可重抓的失败站点"); return 0, 0, 2 if unmatched else 0
     keep = set(range(len(lines))); completed = 0; success_count = 0; removed = False; original_debug = crawler.save_debug_page
+    successful_for_manifest = []
     crawler.save_debug_page = lambda *a, **k: None
     try:
         for indexes, target in jobs.values():
@@ -66,12 +80,12 @@ def retry_failed_file(failure_file: Path, issue: str) -> tuple[int, int, int]:
                 if failure or not results:
                     if failure: print(f"[{target.get('name')}] 本轮失败：{failure.reason}")
                     continue
-                result_file = crawler.RESULTS_DIR / f"{issue}期-杀数字-成功.txt"
                 old_bytes = result_file.read_bytes() if result_file.exists() else b""
                 old = old_bytes.decode("utf-8-sig").splitlines() if old_bytes else []
                 conflict = False
                 added = []
-                for result in crawler.dedupe_results(results):
+                deduped_results = crawler.dedupe_results(results)
+                for result in deduped_results:
                     line = f"{','.join(result.numbers)} {result.name}"
                     other = [x for x in old if x.endswith(f" {result.name}") and x != line]
                     if other: print(f"同名号码冲突，保留失败：{result.name}"); conflict = True; continue
@@ -84,6 +98,7 @@ def retry_failed_file(failure_file: Path, issue: str) -> tuple[int, int, int]:
                             raise OSError("成功TXT在处理期间被修改，停止覆盖")
                         _write_bytes(result_file, old_bytes + separator + ending.join(x.encode() for x in added) + ending)
                     success_count += 1
+                    successful_for_manifest.extend(deduped_results)
                     for index in indexes: keep.discard(index)
                     removed = True
                     completed += 1
@@ -97,6 +112,20 @@ def retry_failed_file(failure_file: Path, issue: str) -> tuple[int, int, int]:
         except OSError as exc:
             print(f"成功 TXT 已保存，失败 TXT 仍保留；写入失败：{exc}")
             return len(jobs), completed, 1
+        if manifest is not None:
+            try:
+                refresh_run_manifest_after_retry(
+                    manifest_file,
+                    manifest,
+                    issue,
+                    successful_for_manifest,
+                    targets,
+                    result_file,
+                    failure_file,
+                )
+            except (OSError, ValueError) as exc:
+                print(f"TXT 已更新，但运行清单同步失败；文件模式将拒绝旧证据：{exc}")
+                return len(jobs), completed, 1
     remaining = sum(1 for i in keep if lines[i].strip())
     status = 0 if remaining == 0 else 1
     print(f"定向重抓：{len(jobs)} 个，成功：{completed} 个，仍失败：{remaining} 个，缓存：未修改")

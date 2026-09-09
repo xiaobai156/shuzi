@@ -11,15 +11,18 @@ CACHE_FILE = "recent_10_cache.json"
 CRAWLER_WORKERS = 16
 
 
-def latest_issue_from_input(raw_issues: str, default_issues: str) -> str:
-    issues = crawler.parse_issues(raw_issues or default_issues)
+def latest_issue_from_input(raw_issues: str, default_issues: str = "") -> str:
+    _ = default_issues  # Kept only for API compatibility; formal runs never default a period.
+    issues = crawler.parse_issues(raw_issues)
     if not issues:
-        raise ValueError("没有可用期数")
+        raise ValueError("必须明确输入单一期数，禁止使用默认期数")
     return issues[-1]
 
 
 def crawler_command_for_input(raw_issues: str) -> list[str]:
-    issues = crawler.parse_issues(raw_issues or crawler.DEFAULT_ISSUES)
+    issues = crawler.parse_issues(raw_issues)
+    if not issues:
+        raise ValueError("必须明确输入单一期数，禁止使用默认期数")
     if len(issues) != 1:
         raise ValueError("单期入口只允许一个期数；多个期数请使用多期入口")
     return [sys.executable, str(CRAWLER_FILE), "--workers", str(CRAWLER_WORKERS), "--issues", issues[0]]
@@ -36,11 +39,11 @@ def configure_output_encoding() -> None:
 def main() -> int:
     configure_output_encoding()
     print("请输入要爬取的单一期数，例如：124；多个期数请使用多期入口")
-    print("直接回车则使用 crawler.py 默认期数。")
+    print("期数不能为空；为避免抓错期，不提供默认期数。")
     issues = input("期数：").strip()
     try:
         cmd = crawler_command_for_input(issues)
-        crawl_issues = crawler.parse_issues(issues or crawler.DEFAULT_ISSUES)
+        crawl_issues = crawler.parse_issues(issues)
         latest_issue = crawl_issues[0]
     except ValueError as exc:
         print(exc)

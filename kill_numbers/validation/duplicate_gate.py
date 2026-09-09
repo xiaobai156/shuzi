@@ -4,7 +4,10 @@ from enum import Enum
 import re
 import unicodedata
 
-from kill_numbers.domain.periods import canonical_url, cycle_key, period_key, period_sort_key, recent_periods, target_identity
+from kill_numbers.domain.periods import (
+    are_consecutive, canonical_url, cycle_key, period_key, period_sort_key,
+    recent_periods, target_identity,
+)
 from kill_numbers.text_utils import normalize_issue
 
 
@@ -90,11 +93,28 @@ def completeness_reasons(records, targets, recent_count=10, *, cycle_lengths=Non
         if missing:
             reasons.append((name, target['url'], '连续近10期不完整，缺少：'+','.join(sorted(missing,key=period_sort_key))))
         period_sets.append((name, target['url'], expected & values.keys()))
-    # No common periods is not a clean comparison, even if both sites have ten.
+    # A clean decision is only possible when every site pair shares enough
+    # *consecutive* periods to prove the three-period duplicate threshold.
+    # Merely having one or two common periods cannot rule out a hidden 3-run.
     for i, left in enumerate(period_sets):
         for right in period_sets[i+1:]:
-            if not left[2] & right[2]:
-                reasons.append((left[0], left[1], f'与 {right[0]} 没有共同期号，检测未完成'))
+            common = sorted(left[2] & right[2], key=period_sort_key)
+            best_run = 0
+            current_run = 0
+            previous = None
+            for period in common:
+                if previous is not None and are_consecutive(previous, period, cycle_lengths):
+                    current_run += 1
+                else:
+                    current_run = 1
+                best_run = max(best_run, current_run)
+                previous = period
+            if best_run < 3:
+                reasons.append((
+                    left[0],
+                    left[1],
+                    f'与 {right[0]} 缺少连续3个共同期号（共同{len(common)}期，最长连续{best_run}期），检测未完成',
+                ))
     return list(dict.fromkeys(reasons))
 
 

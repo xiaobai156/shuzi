@@ -432,22 +432,57 @@ def load_target_urls() -> list[dict]:
     return list(getattr(crawler, "TARGETS", []))
 
 
-def match_url(name: str, targets: list[dict]) -> str:
-    exact = [
-        target.get("url", "")
-        for target in targets
-        if target.get("name") == name
-    ]
-    if len(exact) == 1:
-        return exact[0]
+def match_target(name: str, targets: list[dict]) -> dict | None:
+    exact = [target for target in targets if target.get("name") == name]
+    return exact[0] if len(exact) == 1 else None
 
-    return ""
+
+def match_url(name: str, targets: list[dict]) -> str:
+    target = match_target(name, targets)
+    return str(target.get("url") or "") if target else ""
 
 
 def add_urls(records: list[Record]) -> None:
     targets = load_target_urls()
     for record in records:
-        record.url = match_url(record.name, targets)
+        target = match_target(record.name, targets)
+        if target is None:
+            record.url = ""
+            record.target_id = ""
+            continue
+        record.url = str(target.get("url") or "")
+        record.target_id = target_identity(target)
+
+
+def trim_records_to_recent_site_windows(
+    records: list[Record],
+    recent_count: int,
+    cycle_lengths: dict | None = None,
+) -> list[Record]:
+    """Discard older file history per site without hiding invalid/unlabelled rows."""
+    by_site: dict[tuple[str, str], list[Record]] = defaultdict(list)
+    for record in records:
+        by_site[site_key(record)].append(record)
+
+    retained: list[Record] = []
+    for site_records in by_site.values():
+        verified = [record for record in site_records if cycle_key(record.cycle_id)]
+        unverified = [record for record in site_records if not cycle_key(record.cycle_id)]
+        retained.extend(unverified)
+        if not verified:
+            continue
+        latest = max((record_period(record) for record in verified), key=period_sort_key)
+        try:
+            expected = set(recent_periods(latest, recent_count, cycle_lengths))
+        except ValueError:
+            # Preserve the evidence so completeness validation can explain the
+            # unproven rollover instead of silently dropping it.
+            retained.extend(verified)
+            continue
+        retained.extend(
+            record for record in verified if record_period(record) in expected
+        )
+    return retained
 
 
 def parse_issues(raw: str) -> list[str]:
@@ -553,6 +588,9 @@ def fetch_target_content(target: dict) -> tuple[str, list]:
 def available_issues_for_target(target: dict) -> tuple[str, str, list[str]]:
     import crawler
 
+    if target.get("special_parser") in ACQUISITION_ONLY_PARSERS:
+        available = crawler.available_issues_for_acquisition_target(target)
+        return target_name(target), target.get("url", ""), available
     name, documents = fetch_target_content(target)
     available, _selected = crawler.available_issues_for_documents(documents, target)
     return name or target_name(target), target.get("url", ""), available
@@ -570,6 +608,19 @@ def snapshot_for_target(target: dict, recent_count: int = DEFAULT_RECENT) -> Tar
 
 def _snapshot_for_target(target: dict) -> TargetSnapshot:
     import crawler
+
+    if target.get("special_parser") in ACQUISITION_ONLY_PARSERS:
+        available = crawler.available_issues_for_acquisition_target(target)
+        return TargetSnapshot(
+            target=target,
+            name=target_name(target),
+            url=target.get("url", ""),
+            documents=[],
+            selected_content="",
+            available_issues=[
+                issue_key(issue) for issue in available if issue_key(issue)
+            ],
+        )
 
     name, documents = fetch_target_content(target)
     available, selected_document = crawler.available_issues_for_documents(
@@ -1251,6 +1302,12 @@ def _main_unlocked() -> int:
             if args.issues:
                 issues = parse_issues(args.issues)
                 records = filter_records_by_issues(records, issues)
+            else:
+                records = trim_records_to_recent_site_windows(
+                    records,
+                    args.recent,
+                    lengths,
+                )
         elif args.issues or args.latest:
             issues = parse_issues(args.issues) if args.issues else recent_issues_from_latest(args.latest, args.recent)
             records, problems = records_from_crawler(issues, args.workers)
