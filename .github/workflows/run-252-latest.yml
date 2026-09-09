@@ -1,0 +1,74 @@
+name: Live 252 latest-main crawl
+
+on:
+  push:
+    branches:
+      - run/252-latest-main-20260909
+
+permissions:
+  contents: read
+
+jobs:
+  crawl:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    env:
+      PYTHONUTF8: '1'
+      SHUZI_RESULTS_DIR: /tmp/shuzi-results
+      SHUZI_BROWSER_CONCURRENCY: '2'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: run/252-latest-main-20260909
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install Chromium
+        run: |
+          python -m pip install playwright
+          python -m playwright install --with-deps chromium
+      - name: Run 252 live crawl
+        shell: bash
+        run: |
+          mkdir -p "$SHUZI_RESULTS_DIR"
+          set +e
+          python crawler.py --issues 252 --workers 16 --no-cache-update
+          code=$?
+          set -e
+          echo "CRAWL_EXIT=$code" >> "$GITHUB_ENV"
+      - name: Summarize
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json, os, re
+          from pathlib import Path
+          import crawler
+          root=Path(os.environ['SHUZI_RESULTS_DIR'])
+          sf=root/'252期-杀数字-成功.txt'; ff=root/'252期-杀数字-失败.txt'
+          success=[]
+          if sf.is_file():
+              success=[x.strip() for x in sf.read_text(encoding='utf-8-sig',errors='replace').splitlines() if x.strip()]
+          pat=re.compile(r'^(?:\[[^]]+\]\s+)?(?P<name>.+?)\s+(?:(?P<region>top|bottom)\s+)?(?P<url>https?://\S+)\s+(?P<reason>.*)$')
+          failures=[]
+          if ff.is_file():
+              for line in ff.read_text(encoding='utf-8-sig',errors='replace').splitlines():
+                  m=pat.match(line.strip())
+                  if m: failures.append(m.groupdict())
+          summary={'active':len(crawler.load_targets()),'success':len(success),'failure':len(failures),'exit':int(os.environ.get('CRAWL_EXIT','-1')),'failures':failures}
+          (root/'summary.json').write_text(json.dumps(summary,ensure_ascii=False,indent=2),encoding='utf-8')
+          print('LIVE252_ACTIVE='+str(summary['active']))
+          print('LIVE252_SUCCESS='+str(summary['success']))
+          print('LIVE252_FAILURE='+str(summary['failure']))
+          print('LIVE252_EXIT='+str(summary['exit']))
+          print('---FAILURES---')
+          for x in failures: print(x['name']+'\t'+x['reason'])
+          PY
+      - name: Upload results and debug
+        uses: actions/upload-artifact@v4
+        with:
+          name: live-252-latest-main
+          path: |
+            /tmp/shuzi-results
+            debug_pages
+          if-no-files-found: warn
+          retention-days: 1
