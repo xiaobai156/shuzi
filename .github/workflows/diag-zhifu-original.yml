@@ -1,0 +1,44 @@
+name: Verify Zhifu original source
+
+on:
+  push:
+    branches:
+      - diag/zhifu-original-20260910
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      PYTHONUTF8: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Verify exact source through production parser
+        shell: bash
+        run: |
+          python - <<'PY'
+          import crawler
+          from kill_numbers.acquisition.policy import target_policy
+          targets={t['name']:t for t in crawler.load_targets()}
+          t=dict(targets['至富财运'])
+          t['url']='https://xdr22.39176d.com/read.php?tid=422'
+          t.pop('api_url',None)
+          print('CANDIDATE',t['url'])
+          with target_policy(t,['252']):
+              fetched_name,docs=crawler.fetch_target_documents(t,['252'])
+          print('FETCH_NAME',fetched_name)
+          print('PARSEABLE',[(d.kind,d.url,d.priority,d.metadata) for d in docs if d.metadata.get('parseable')])
+          found,selected=crawler.parse_target_documents(docs,t,['252'])
+          print('FOUND',found)
+          print('SELECTED',None if selected is None else (selected.kind,selected.url,selected.priority,selected.metadata))
+          if '252' not in found:
+              raise SystemExit('candidate does not have valid 252 in configured window')
+          if len(found['252'])!=10 or len(set(found['252']))!=10:
+              raise SystemExit('candidate 252 is not ten unique numbers')
+          PY
