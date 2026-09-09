@@ -523,7 +523,7 @@
     "region": "bottom",
     "anchor": "不可或缺 发表于",
     "stop_anchor": "上一篇:",
-    "special_parser": "top_article_history_current_cycle",
+    "special_parser": "top_article_history",
     "article_title_anchor": "频果报论坛准杀八码",
     "issue_position_window": 5
   },
@@ -1879,7 +1879,8 @@
     "region": "bottom",
     "anchor": "横财富",
     "source_url_pattern": "/jssm\\.aspx",
-    "source_anchor": "绝杀十码"
+    "allowed_source_types": ["external_script"],
+    "source_anchor": ""
   },
   {
     "url": "https://2.www39169b.com:888/#62111",
@@ -2066,10 +2067,10 @@
     "keywords": ["绝杀十码"],
     "count": 10,
     "region": "bottom",
-    "anchor": "澳门马经论坛[绝杀十码]",
-    "stop_anchor": "澳门马经论坛[内部六尾]",
+    "anchor": "澳门马经论坛【绝杀十码】",
     "issue_position_window": 10,
-    "special_parser": "majing_forum_bottom_10"
+    "source_url_pattern": "/amlxfs\\.aspx",
+    "allowed_source_types": ["external_script"]
   },
   {
     "url": "https://1214.775486.xyz/bbs/topic.php?id=20208",

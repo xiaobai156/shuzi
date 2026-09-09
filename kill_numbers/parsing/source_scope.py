@@ -60,8 +60,19 @@ def target_for_document(target, document):
     if pattern:
         if not re.search(pattern, document.url, re.I):
             raise NoCandidateError("来源文档不符合专属 URL 契约")
-        if target.get("source_anchor"):
-            value["anchor"] = target["source_anchor"]
+        if "source_anchor" in target:
+            raw_source_anchor = target.get("source_anchor")
+            if raw_source_anchor is None:
+                raise NoCandidateError("source_anchor 不能为 null")
+            source_anchor = str(raw_source_anchor).strip()
+            if source_anchor:
+                value["anchor"] = source_anchor
+            elif document.metadata.get("source_url_identity_verified") is True:
+                value["anchor"] = ""
+                value["_scope_kind"] = "source_url_identity"
+                value["_source_identity"] = document.url
+            elif value.get("_scope_kind") == "source_url_identity":
+                value["anchor"] = ""
     metadata = document.metadata
     user_match = re.search(r"/users/(\d+)(?:\D|$)", str(target.get("url") or ""))
     # Only the per-user API adapter can replace an author text anchor. A file
