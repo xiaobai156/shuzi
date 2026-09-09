@@ -1,7 +1,7 @@
 from html.parser import HTMLParser
 
-from kill_numbers.parsing.common import scope_text_by_anchor_with_offset
-from kill_numbers.text_utils import html_to_text
+from kill_numbers.parsing.common import find_anchor_index
+from kill_numbers.text_utils import as_list, html_to_text
 
 
 def content_section(content: str, target: dict) -> tuple[str, int]:
@@ -45,11 +45,18 @@ def content_section(content: str, target: dict) -> tuple[str, int]:
     prefix = html_to_text(content[:raw_end])
     if not full_text.startswith(prefix):
         raise ValueError('正文容器文本偏移不一致')
-    _, anchor_start = scope_text_by_anchor_with_offset(prefix, target.get('anchor'))
     body = html_to_text(content[raw_start:raw_end])
     if not body or not prefix.endswith(body):
         raise ValueError('正文容器文本偏移不一致')
     start = len(prefix) - len(body)
-    if anchor_start > start:
+
+    # content_class already proves one exact, closed DOM container.  The anchor
+    # is identity evidence for the title/author area before that container; it
+    # is not a second text-section boundary.  Requiring a unique anchor across
+    # the whole prefix rejects valid pages where the same author/column name is
+    # repeated in the title or every historical row.
+    anchors = as_list(target.get('anchor'))
+    identity_prefix = prefix[:start]
+    if anchors and not any(find_anchor_index(identity_prefix, anchor) >= 0 for anchor in anchors):
         raise ValueError('正文身份锚点必须位于该栏目标题或作者区')
     return body, start
