@@ -127,3 +127,44 @@ def test_covered_external_script_is_also_redundant_but_independent_inline_is_not
     )
     with pytest.raises(SourceContractError):
         crawler.parse_target_document_results([page, inline], target(), ["252"])
+
+
+def test_identity_only_decoded_inline_fragment_does_not_poison_complete_page():
+    page, _script = complete_page()
+    identity_only = doc(
+        "decoded_inline_component",
+        page.url + "#decoded-1",
+        f"<title>{ANCHOR}</title>",
+        80,
+        parent_url=page.url,
+    )
+    parsed = crawler.parse_target_document_results([page, identity_only], target(), ["252"])
+    assert parsed.issue_map == {"252": ["01", "02", "03"]}
+    assert parsed.source_documents["252"] is page
+
+
+def test_decoded_inline_fragment_with_requested_issue_still_fails_closed():
+    page, _script = complete_page()
+    incomplete = doc(
+        "decoded_inline_component",
+        page.url + "#decoded-1",
+        f"{ANCHOR}\n{row('01 02 03')}",
+        80,
+        parent_url=page.url,
+    )
+    with pytest.raises(SourceContractError):
+        crawler.parse_target_document_results([page, incomplete], target(), ["252"])
+
+
+def test_identity_only_decoded_inline_fragment_is_ignored_in_history_discovery():
+    page, _script = complete_page()
+    identity_only = doc(
+        "decoded_inline_component",
+        page.url + "#decoded-1",
+        f"<title>{ANCHOR}</title>",
+        80,
+        parent_url=page.url,
+    )
+    available, selected = crawler.available_issues_for_documents([page, identity_only], target())
+    assert available == ["252"]
+    assert selected is page

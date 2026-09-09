@@ -1021,6 +1021,29 @@ def _without_redundant_reconstructed_fragments(documents):
     return result
 
 
+def _decoded_fragment_mentions_issue(document: SourceDocument, issues: list[str] | None = None) -> bool:
+    """Return whether an independent decoded fragment can own a period candidate.
+
+    Decoded components are intentionally independent and may not borrow an
+    anchor/title from one fragment and a period row from another.  A component
+    containing only identity text (for example ``<title>站名</title>``) cannot
+    possibly produce a requested period and therefore must behave as
+    ``NoCandidate`` rather than poisoning a complete reconstructed page with a
+    source-contract error.  Components that actually mention the requested
+    period remain fully fail-closed.
+    """
+    if document.kind not in {"decoded_inline_component", "decoded_script_component"}:
+        return True
+    text = html_to_text(document.content)
+    if issues is None:
+        return bool(re.search(r"(?<!\d)0?\d{1,3}\s*期(?!\d)", text))
+    requested = {normalize_issue(issue) for issue in issues if normalize_issue(issue)}
+    return any(
+        re.search(rf"(?<!\d)0?{re.escape(issue)}\s*期(?!\d)", text)
+        for issue in requested
+    )
+
+
 def _directional_parseable_documents(documents, target):
     """Rank valid rows across a user-post sequence without joining documents."""
     parseable = parseable_documents(_without_redundant_reconstructed_fragments(documents))
@@ -1158,6 +1181,8 @@ def parse_target_document_results(
     requested_set = set(requested)
     parsed: list[tuple[SourceDocument, dict[str, list[str]]]] = []
     for document in parseable:
+        if not _decoded_fragment_mentions_issue(document, requested):
+            continue
         try:
             document_target = target_for_document(target, document)
             issue_map = parse_target_content(document.content, document_target, requested)
@@ -1349,6 +1374,8 @@ def available_issues_for_documents(
     document_order = {id(document): index for index, document in enumerate(parseable)}
     candidates: list[tuple[SourceDocument, list[str]]] = []
     for document in parseable:
+        if not _decoded_fragment_mentions_issue(document):
+            continue
         try:
             document_target = target_for_document(target, document)
             if (
