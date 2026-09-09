@@ -155,7 +155,11 @@ from kill_numbers.parsing.registry import (
     parse_target_content,
 )
 from kill_numbers.validation.result_validator import validate_issue_map
-from kill_numbers.parsing.source_scope import VALID_SOURCE_TYPES, target_for_document
+from kill_numbers.parsing.source_scope import (
+    VALID_SOURCE_TYPES,
+    source_type_allowed,
+    target_for_document,
+)
 from kill_numbers.parsing.errors import (
     CandidateConflictError,
     NoCandidateError,
@@ -685,7 +689,10 @@ def _zuojianzifu_issue_links(target: dict) -> tuple[list[str], dict[str, str]]:
     return ordered, links
 
 
-def _ttss_issue_links(target: dict) -> tuple[list[str], dict[str, str]]:
+def _ttss_issue_links(
+    target: dict,
+    requested_issues: list[str] | None = None,
+) -> tuple[list[str], dict[str, str]]:
     page_limit = target.get("pagination_limit")
     if isinstance(page_limit, bool) or not isinstance(page_limit, int) or page_limit <= 0:
         raise SourceContractError(f"分页上限无效：{page_limit}")
@@ -740,6 +747,19 @@ def _ttss_issue_links(target: dict) -> tuple[list[str], dict[str, str]]:
         if next_url == current_url:
             break
         if page_number == page_limit:
+            requested = {
+                normalize_issue(issue)
+                for issue in (requested_issues or [])
+                if normalize_issue(issue)
+            }
+            if requested and requested.issubset(links_by_issue):
+                # The requested identity rows were already found within the
+                # configured scan budget.  Later pages can only add older rows,
+                # so they cannot move an already-seen row out of the top window.
+                # Keep the hard page cap for discovery/history calls where no
+                # concrete requested issue proves that the current result is in
+                # scope.
+                break
             raise SourceContractError(f"分页超过配置上限 {page_limit}")
         current_url = next_url
 
@@ -816,7 +836,7 @@ def crawl_ttss_paginated_identity_top_10(
     if not issues:
         raise ValueError("没有指定期数")
     requested = unique_keep_order(normalize_issue(issue) for issue in issues)
-    ordered, links = _ttss_issue_links(target)
+    ordered, links = _ttss_issue_links(target, requested)
     allowed = set(_directional_acquisition_issues(ordered, target))
     outside = [issue for issue in requested if issue not in allowed]
     if outside:
@@ -1113,9 +1133,44 @@ def parse_target_document_results(
             raise SourceContractError(
                 f"没有找到专属来源文档：{source_url_pattern}"
             )
-        source_anchor = str(target.get("source_anchor") or "").strip()
-        if source_anchor:
-            target = {**target, "anchor": source_anchor}
+        if "source_anchor" in target:
+            raw_source_anchor = target.get("source_anchor")
+            if raw_source_anchor is None:
+                raise SourceContractError("source_anchor 不能为 null")
+            source_anchor = str(raw_source_anchor).strip()
+            if source_anchor:
+                target = {**target, "anchor": source_anchor}
+            else:
+                # An explicitly empty source_anchor means the configured source
+                # URL itself is the inner identity boundary. This is allowed only
+                # when URL + source-type contracts identify exactly one document.
+                allowed = [
+                    document
+                    for document in parseable
+                    if source_type_allowed(target, document)
+                ]
+                if len(allowed) != 1:
+                    raise SourceContractError(
+                        "空 source_anchor 仅允许唯一专属来源文档，"
+                        f"当前候选 {len(allowed)} 个"
+                    )
+                verified_document = replace(
+                    allowed[0],
+                    metadata={
+                        **allowed[0].metadata,
+                        "source_url_identity_verified": True,
+                    },
+                )
+                parseable = [
+                    verified_document if document is allowed[0] else document
+                    for document in parseable
+                ]
+                target = {
+                    **target,
+                    "anchor": "",
+                    "_scope_kind": "source_url_identity",
+                    "_source_identity": verified_document.url,
+                }
 
     parseable = _directional_parseable_documents(parseable, target)
     document_order = {id(document): index for index, document in enumerate(parseable)}

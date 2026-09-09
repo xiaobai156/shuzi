@@ -45,6 +45,22 @@ def test_golden_manifest_matches_current_target_inventory():
                 assert t.pop('browser') is True
             else:
                 assert t.pop('allowed_source_types') == ['decoded_script']
+        if t['name'] == '不可或缺':
+            assert t['special_parser'] == 'top_article_history'
+            t['special_parser'] = 'top_article_history_current_cycle'
+        elif t['name'] == '横财富':
+            assert t.pop('allowed_source_types') == ['external_script']
+            assert t['anchor'] == '横财富'
+            assert t['source_url_pattern'] == '/jssm\\.aspx'
+            assert t.pop('source_anchor') == ''
+            t['source_anchor'] = '绝杀十码'
+        elif t['name'] == '马经论坛':
+            assert t.pop('allowed_source_types') == ['external_script']
+            assert t.pop('source_url_pattern') == '/amlxfs\\.aspx'
+            assert t['anchor'] == '澳门马经论坛【绝杀十码】'
+            t['anchor'] = '澳门马经论坛[绝杀十码]'
+            t['stop_anchor'] = '澳门马经论坛[内部六尾]'
+            t['special_parser'] = 'majing_forum_bottom_10'
     canonical = json.dumps(legacy, ensure_ascii=False, sort_keys=True, separators=(',', ':'))
     # Canonical SHA256 of origin/main cb915d1's original 208 targets.
     assert hashlib.sha256(canonical.encode()).hexdigest() == 'daccdf324f1eb15b7e18f0486bb8cb284c927f939a038b6d3af9156421cadbe8'

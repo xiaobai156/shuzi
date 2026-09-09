@@ -193,6 +193,9 @@ def _validate_candidate_evidence(
         from kill_numbers.text_utils import normalize_keyword
         if not evidence.source_identity or normalize_keyword(evidence.source_identity) != normalize_keyword(str(target.get("anchor") or "")):
             errors.append(f"{issue}期来源证据身份不匹配")
+    elif evidence.scope_kind == "source_url_identity":
+        if not evidence.source_identity or evidence.source_identity != evidence.source_url:
+            errors.append(f"{issue}期来源证据 URL 身份不匹配")
     elif target.get("anchor") and not evidence.anchor and not target.get("special_parser"):
         errors.append(f"{issue}期来源证据锚点缺失")
     source_pattern = str(target.get("source_url_pattern") or "").strip()
