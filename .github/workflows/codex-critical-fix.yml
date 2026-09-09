@@ -53,6 +53,9 @@ jobs:
           sed -i '220s/replace_once/replace_all/' .github/scripts/reconcile_critical_fixes.py
           python .github/scripts/reconcile_critical_fixes.py
 
+      - name: Apply final corrections
+        run: python .github/scripts/finalize_critical_fixes.py
+
       - name: Compile source and tests
         run: python -m compileall -q crawler.py check_duplicates.py kill_numbers run_crawler_prompt.py run_crawler_multi_prompt.py tests test_*.py
 
@@ -66,6 +69,7 @@ jobs:
         run: |
           rm -f .github/scripts/apply_critical_fixes.py
           rm -f .github/scripts/reconcile_critical_fixes.py
+          rm -f .github/scripts/finalize_critical_fixes.py
           rm -f .github/workflows/codex-critical-fix.yml
 
       - name: Commit verified repair
