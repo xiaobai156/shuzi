@@ -27,8 +27,19 @@ jobs:
       - name: Install test dependency
         run: python -m pip install --upgrade pytest
 
-      - name: Align guarded source match
-        run: sed -i 's/expected_min=2,/expected_min=1,/' .github/scripts/apply_critical_fixes.py
+      - name: Align guarded applicator behavior
+        run: |
+          sed -i 's/expected_min=2,/expected_min=1,/' .github/scripts/apply_critical_fixes.py
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('.github/scripts/apply_critical_fixes.py')
+          text = path.read_text(encoding='utf-8')
+          old = 'updated, count = re.subn(pattern, replacement, content, count=1, flags=re.S)'
+          new = 'updated, count = re.subn(pattern, lambda _match: replacement, content, count=1, flags=re.S)'
+          if old not in text:
+              raise SystemExit('regex replacement helper marker not found')
+          path.write_text(text.replace(old, new, 1), encoding='utf-8')
+          PY
 
       - name: Apply audited fixes
         run: python .github/scripts/apply_critical_fixes.py
