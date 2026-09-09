@@ -1,0 +1,69 @@
+name: Diagnose TTSS 252 pagination
+
+on:
+  push:
+    branches:
+      - diag/252-ttss-20260909
+
+permissions:
+  contents: read
+
+jobs:
+  diag:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      PYTHONUTF8: '1'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: diag/252-ttss-20260909
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Inspect pagination and 252 placement
+        run: |
+          python - <<'PY'
+          from urllib.parse import urljoin
+          import crawler
+          from kill_numbers.acquisition.policy import target_policy
+          from kill_numbers.acquisition.documents import parseable_documents
+          from kill_numbers.acquisition.strategies.linked_pages import topic_links
+          from kill_numbers.text_utils import remove_fragment
+
+          wanted = {'告别那时', '私房一肖'}
+          for target in [t for t in crawler.load_targets() if t['name'] in wanted]:
+              print('\n===== TARGET', target['name'], '=====')
+              print('region=', target.get('region'), 'window=', target.get('issue_position_window'),
+                    'limit=', target.get('pagination_limit'), 'next=', target.get('pagination_next_text'),
+                    'keywords=', target.get('link_keywords'))
+              current = remove_fragment(target['url'])
+              visited = set()
+              with target_policy(target, ['252']):
+                  for page_number in range(1, 13):
+                      if current in visited:
+                          print('LOOP', current)
+                          break
+                      visited.add(current)
+                      try:
+                          _name, docs = crawler.discover_static_documents(current)
+                      except Exception as exc:
+                          print('PAGE', page_number, 'FETCH_ERROR', type(exc).__name__, exc)
+                          break
+                      ordered, links = crawler._ordered_issue_links_from_documents(
+                          docs, link_keywords=target.get('link_keywords') or [])
+                      print('PAGE', page_number, 'URL', current, 'ISSUES', ordered,
+                            'HAS252', '252' in links, 'LINK252', links.get('252',''))
+                      next_candidates=[]
+                      for document in parseable_documents(docs):
+                          next_candidates.extend(
+                              urljoin(document.url, href)
+                              for href, label in topic_links(document.content)
+                              if label.strip() == str(target.get('pagination_next_text') or '').strip()
+                          )
+                      distinct=list(dict.fromkeys(next_candidates))
+                      print('NEXT', distinct)
+                      if len(distinct) != 1 or not distinct[0].strip() or distinct[0].strip() == '#':
+                          break
+                      current=remove_fragment(urljoin(current, distinct[0]))
+          PY
