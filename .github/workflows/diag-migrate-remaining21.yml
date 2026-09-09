@@ -1,4 +1,4 @@
-name: Inspect root identity snippets
+name: Inspect root identity DOM
 
 on:
   push:
@@ -23,11 +23,10 @@ jobs:
         run: |
           python -m pip install playwright
           python -m playwright install chromium
-      - name: Print exact identity neighborhoods
+      - name: Print clickable identity DOM
         shell: bash
         run: |
           python - <<'PY'
-          import re
           from playwright.sync_api import sync_playwright
           root='https://szfzml.mfuw8-bnsfa-gdaxhk.xyz/'
           with sync_playwright() as p:
@@ -36,20 +35,17 @@ jobs:
               page.goto(root,wait_until='domcontentloaded',timeout=15000)
               try: page.wait_for_load_state('networkidle',timeout=7000)
               except Exception: pass
-              body=page.locator('body').inner_text()
-              lines=[line.strip() for line in body.splitlines() if line.strip()]
-              print('LINES',len(lines),'BODY_LEN',len(body))
-              for name in ['寿比南山','弦无虚发','博彩兵书']:
+              for name in ['寿比南山','弦无虚发']:
                   print(f'\n=== {name} ===')
-                  idxs=[i for i,line in enumerate(lines) if name in line]
-                  print('IDENTITY_LINE_INDEXES',idxs)
-                  for idx in idxs:
-                      lo=max(0,idx-8); hi=min(len(lines),idx+35)
-                      print('--- NEIGHBORHOOD',idx,'---')
-                      for j in range(lo,hi): print(f'{j:04d}: {lines[j]}')
-              print('\n=== ALL 252 LINES ===')
-              for i,line in enumerate(lines):
-                  if re.search(r'(?<!\d)0?252\s*期(?!\d)',line):
-                      print(f'{i:04d}: {line}')
+                  loc=page.get_by_text(name, exact=False)
+                  print('COUNT',loc.count())
+                  for i in range(min(loc.count(),5)):
+                      el=loc.nth(i)
+                      try:
+                          print('TEXT',repr(el.inner_text()))
+                          print('OUTER',el.evaluate('(e)=>e.outerHTML'))
+                          print('ANCESTORS',el.evaluate("(e)=>{let a=[];for(let n=e;n&&a.length<6;n=n.parentElement)a.push(n.outerHTML.slice(0,3000));return a}"))
+                      except Exception as exc:
+                          print('EL_ERROR',type(exc).__name__,exc)
               b.close()
           PY
