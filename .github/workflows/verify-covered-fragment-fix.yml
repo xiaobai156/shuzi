@@ -1,0 +1,112 @@
+name: Verify covered fragment fix
+
+on:
+  push:
+    branches:
+      - fix/252-covered-fragment-poison-20260909
+
+permissions:
+  contents: write
+
+jobs:
+  verify-publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      PYTHONUTF8: '1'
+      SHUZI_RESULTS_DIR: /tmp/shuzi-covered-results
+      SHUZI_BROWSER_CONCURRENCY: '2'
+    steps:
+      - name: Checkout exact repair branch
+        uses: actions/checkout@v4
+        with:
+          ref: fix/252-covered-fragment-poison-20260909
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Apply reviewed patch
+        run: |
+          base64 -d .github/covered-fragment.patch.b64 > /tmp/covered-fragment.patch
+          echo '0d5078131a2744bf41cbb90bc57454ceaec469bf389f893fd6dd9d853bf5645d  /tmp/covered-fragment.patch' | sha256sum -c -
+          git apply --check /tmp/covered-fragment.patch
+          git apply /tmp/covered-fragment.patch
+
+      - name: Install test dependencies
+        run: python -m pip install -r requirements-test.txt
+
+      - name: Compile and check diff
+        run: |
+          python -m compileall -q crawler.py check_duplicates.py retry_failed.py run_crawler_prompt.py run_crawler_multi_prompt.py kill_numbers tests test_*.py
+          git diff --check
+
+      - name: Run full regression suite
+        run: python -m pytest -q
+
+      - name: Install real Chromium
+        run: |
+          python -m pip install playwright
+          python -m playwright install --with-deps chromium
+
+      - name: Run real Chromium tests
+        env:
+          RUN_BROWSER_SMOKE: '1'
+        run: python -m pytest -q tests/test_browser_smoke.py
+
+      - name: Run isolated live 252 crawl
+        shell: bash
+        run: |
+          rm -rf "$SHUZI_RESULTS_DIR"
+          mkdir -p "$SHUZI_RESULTS_DIR"
+          set +e
+          python crawler.py --issues 252 --workers 16 --no-cache-update
+          code=$?
+          set -e
+          echo "CRAWL_EXIT=$code" >> "$GITHUB_ENV"
+          echo "crawler exit code: $code"
+
+      - name: Verify live result did not regress
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          root = Path(os.environ['SHUZI_RESULTS_DIR'])
+          success_file = root / '252期-杀数字-成功.txt'
+          failure_file = root / '252期-杀数字-失败.txt'
+          success = [line for line in success_file.read_text(encoding='utf-8-sig').splitlines() if line.strip()] if success_file.is_file() else []
+          failures = [line for line in failure_file.read_text(encoding='utf-8-sig').splitlines() if line.strip()] if failure_file.is_file() else []
+          summary = {'success': len(success), 'failure': len(failures), 'active': len(success) + len(failures), 'crawler_exit': int(os.environ.get('CRAWL_EXIT', '-1'))}
+          (root / 'live-252-summary.json').write_text(json.dumps(summary, ensure_ascii=False, indent=2), encoding='utf-8')
+          print('LIVE252_SUCCESS=' + str(summary['success']))
+          print('LIVE252_FAILURE=' + str(summary['failure']))
+          print('LIVE252_ACTIVE=' + str(summary['active']))
+          if summary['active'] != 161:
+              raise SystemExit('live crawl did not account for all 161 active targets')
+          if summary['success'] < 100:
+              raise SystemExit('live 252 regressed below the verified 100-success baseline')
+          PY
+
+      - name: Publish verified repair commit
+        run: |
+          rm -f .github/covered-fragment.patch.b64
+          rm -f .github/workflows/export-covered-fragment-source.yml
+          rm -f .github/workflows/verify-covered-fragment-fix.yml
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          git diff --cached --check
+          git commit -m 'fix: trust complete reconstructed pages over covered fragments'
+          git push origin HEAD:fix/252-covered-fragment-poison-20260909
+
+      - name: Upload live verification
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: covered-fragment-live-252
+          path: /tmp/shuzi-covered-results
+          if-no-files-found: warn
+          retention-days: 2
