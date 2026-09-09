@@ -1,0 +1,119 @@
+name: Diagnose remaining admin transport
+
+on:
+  push:
+    branches:
+      - diag/final29-admin-transport-20260909
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: diag/final29-admin-transport-20260909
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Probe exact configured article sources
+        run: |
+          python - <<'PY'
+          import json, re, ssl
+          from pathlib import Path
+          from urllib.error import HTTPError
+          from urllib.parse import parse_qs, quote, urlparse
+          from urllib.request import Request, urlopen
+          from kill_numbers.acquisition.http_client import HEADERS
+          from kill_numbers.acquisition.strategies.admin_article import admin_article_api_url
+          from kill_numbers.text_utils import origin
+
+          out = Path('diag-admin'); out.mkdir(exist_ok=True)
+          targets = json.load(open('targets.json', encoding='utf-8'))
+          names = ['至富财运','福星金牌','金宝神皇','港澳爆庄','蔡邕救琴','茂名神码','冰雨蝴蝶','好料见证','你来关注']
+          selected = {t['name']:t for t in targets if t.get('name') in names}
+
+          def probe(url, cap=32*1024*1024):
+              rec={'url':url}
+              try:
+                  with urlopen(Request(url, headers={**HEADERS,'Accept-Encoding':'identity'}), timeout=30, context=ssl.create_default_context()) as r:
+                      data=r.read(cap+1)
+                      rec.update(status=getattr(r,'status',None), final_url=r.geturl(), content_type=r.headers.get('Content-Type'), content_length=r.headers.get('Content-Length'), bytes=len(data), over_cap=len(data)>cap)
+                  if len(data)<=cap:
+                      try:
+                          obj=json.loads(data.decode('utf-8'))
+                          rec['json']=obj
+                      except Exception as e:
+                          rec['json_error']=type(e).__name__+': '+str(e)
+              except HTTPError as e:
+                  rec.update(status=e.code,error='HTTPError '+str(e.code))
+              except Exception as e:
+                  rec['error']=type(e).__name__+': '+str(e)
+              return rec
+
+          def summarize_article(obj):
+              if not isinstance(obj,dict): return None
+              return {
+                  'id':str(obj.get('id') or ''),
+                  'author':str(obj.get('authorNickname') or obj.get('author') or '')[:100],
+                  'title':str(obj.get('title') or '')[:300],
+                  'html_len':len(str(obj.get('html') or obj.get('content') or '')),
+              }
+
+          def walk_dicts(obj):
+              if isinstance(obj,dict):
+                  yield obj
+                  for v in obj.values(): yield from walk_dicts(v)
+              elif isinstance(obj,list):
+                  for v in obj: yield from walk_dicts(v)
+
+          report={}
+          for name,t in selected.items():
+              row={'target':t}
+              if '/article/admin/' in t['url']:
+                  api=admin_article_api_url(t['url'],t)
+              else:
+                  api=str(t.get('api_url') or '')
+              if api:
+                  ar=probe(api)
+                  obj=ar.pop('json',None)
+                  row['api_probe']=ar
+                  if obj is not None:
+                      row['api_article']=summarize_article(obj)
+              page=probe(t['url'], cap=4*1024*1024)
+              page.pop('json',None)
+              row['page_probe']=page
+              q=parse_qs(urlparse(t['url']).query).get('url') or []
+              if q:
+                  landing=f"{origin(t['url'])}/api/proxy/landing-page-data?url={quote(q[0])}"
+                  lr=probe(landing)
+                  lobj=lr.pop('json',None)
+                  row['landing_probe']=lr
+                  if lobj is not None:
+                      candidates=[]
+                      for d in walk_dicts(lobj):
+                          a=summarize_article(d)
+                          if not a: continue
+                          blob=(a['author']+' '+a['title'])
+                          if name in blob or a['id'] in t['url']:
+                              candidates.append(a)
+                      # unique stable summaries only
+                      seen=set(); uniq=[]
+                      for a in candidates:
+                          key=(a['id'],a['author'],a['title'])
+                          if key not in seen: seen.add(key); uniq.append(a)
+                      row['landing_matching_candidates']=uniq[:30]
+              report[name]=row
+          (out/'report.json').write_text(json.dumps(report,ensure_ascii=False,indent=2),encoding='utf-8')
+          for name,row in report.items():
+              print('\n###',name)
+              print(json.dumps(row,ensure_ascii=False,indent=2)[:8000])
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: final29-admin-transport-diagnostics
+          path: diag-admin
+          retention-days: 1
