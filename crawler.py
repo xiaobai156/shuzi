@@ -982,9 +982,48 @@ def _document_conflict_error(
     )
 
 
+def _without_redundant_reconstructed_fragments(documents):
+    """Drop only script fragments already proven inside a complete reconstructed page.
+
+    ``rendered_script_page`` is emitted by acquisition only after every directly
+    referenced ``/upload/script/`` content script was statically replayed in the
+    browser's source order.  Parsing those same scripts and decoded components a
+    second time can turn a harmless partial fragment (for example, an anchor
+    without its later stop marker) into a hard source-contract failure.
+
+    Independent documents remain untouched.  If no complete reconstruction is
+    present, every fragment continues to participate and fail closed as before.
+    """
+    documents = list(documents)
+    covered_scripts = set()
+    for document in documents:
+        if document.kind != "rendered_script_page":
+            continue
+        for source_url in document.metadata.get("script_sources", []):
+            if isinstance(source_url, str) and source_url.strip():
+                covered_scripts.add(remove_fragment(source_url.strip()))
+    if not covered_scripts:
+        return documents
+
+    result = []
+    for document in documents:
+        if (
+            document.kind == "external_script"
+            and remove_fragment(document.url) in covered_scripts
+        ):
+            continue
+        if (
+            document.kind == "decoded_script_component"
+            and remove_fragment(document.parent_url) in covered_scripts
+        ):
+            continue
+        result.append(document)
+    return result
+
+
 def _directional_parseable_documents(documents, target):
     """Rank valid rows across a user-post sequence without joining documents."""
-    parseable = parseable_documents(documents)
+    parseable = parseable_documents(_without_redundant_reconstructed_fragments(documents))
     sequences = {}
     ordinary = []
     for document in parseable:
