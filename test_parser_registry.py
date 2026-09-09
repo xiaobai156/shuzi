@@ -35,6 +35,7 @@ def test_generic_registry_preserves_strict_candidate_rules():
         "count": 4,
         "region": "top",
         "anchor": "作者甲",
+        "issue_position_window": 3,
     }
     content = "作者甲\n211期 专属栏目 01 02 03 04\n"
 
@@ -51,6 +52,7 @@ def test_unknown_special_parser_never_falls_back_to_generic_parser():
         "count": 4,
         "region": "top",
         "anchor": "作者甲",
+        "issue_position_window": 3,
     }
 
     with pytest.raises(ValueError, match="未注册专属解析器"):
@@ -125,6 +127,7 @@ def test_user_forum_topic_sequence_applies_direction_window_before_parsing():
         "count": 4,
         "region": "top",
         "anchor": "作者甲",
+        "issue_position_window": 3,
     }
     documents = [
         make_source_document(

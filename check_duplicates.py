@@ -102,19 +102,40 @@ def normalize_numbers(numbers: str) -> str:
     return numbers
 
 
-def parse_line(line: str, source_file: str, line_no: int) -> Record | None:
+def parse_line(
+    line: str,
+    source_file: str,
+    line_no: int,
+    default_issue: str = "",
+) -> Record | None:
     raw = line.rstrip("\n")
     if not raw.strip():
         return None
 
-    match = re.match(r"^\s*([0-9０-９,，.．\s]+?)\s+(.+?)\s+(\d+\s*期)\s*$", raw)
-    if not match:
-        return None
+    explicit = re.match(
+        r"^\s*([0-9０-９,，.．\s]+?)\s+(.+?)\s+(\d+\s*期)\s*$",
+        raw,
+    )
+    if explicit:
+        numbers = normalize_numbers(explicit.group(1))
+        name = re.sub(r"\s+", " ", explicit.group(2).strip())
+        issue = re.sub(r"\s+", "", explicit.group(3))
+        return Record(source_file, line_no, numbers, name, issue, raw)
 
-    numbers = normalize_numbers(match.group(1))
-    name = re.sub(r"\s+", " ", match.group(2).strip())
-    issue = re.sub(r"\s+", "", match.group(3))
-    return Record(source_file, line_no, numbers, name, issue, raw)
+    if default_issue:
+        implicit = re.match(r"^\s*([0-9０-９,，.．\s]+?)\s+(.+?)\s*$", raw)
+        if implicit:
+            numbers = normalize_numbers(implicit.group(1))
+            name = re.sub(r"\s+", " ", implicit.group(2).strip())
+            return Record(
+                source_file,
+                line_no,
+                numbers,
+                name,
+                f"{issue_key(default_issue)}期",
+                raw,
+            )
+    return None
 
 
 def read_records(files: list[Path]) -> tuple[list[Record], list[str]]:
@@ -126,8 +147,10 @@ def read_records(files: list[Path]) -> tuple[list[Record], list[str]]:
         except UnicodeDecodeError:
             lines = path.read_text(encoding="gb18030", errors="ignore").splitlines()
 
+        filename_match = re.match(r"^(\d+)期-杀数字-成功\.txt$", path.name)
+        default_issue = filename_match.group(1) if filename_match else ""
         for line_no, line in enumerate(lines, start=1):
-            record = parse_line(line, path.name, line_no)
+            record = parse_line(line, path.name, line_no, default_issue=default_issue)
             if record:
                 records.append(record)
             elif line.strip():
@@ -524,15 +547,8 @@ def recent_issues_for_snapshot(snapshot: TargetSnapshot, recent_count: int) -> l
 
 
 def recent_count_for_snapshot(snapshot: TargetSnapshot, fallback_recent_count: int) -> int:
-    target = snapshot.target or {}
-    name = str(target.get("name") or snapshot.name or "")
-    url = str(target.get("url") or snapshot.url or "")
-    if name in SPECIAL_RECENT_COUNTS or "a.am6w.com/bbs1.aspx?id=sha04" in url:
-        return SPECIAL_RECENT_COUNTS.get(name, 8)
-    if "msbqxti.zhx2n-7v5x3-ivdpud.xyz:16677" in url:
-        return 9
-    if "lx11.www87127b.com:8443/bbs/103.html" in url:
-        return 8
+    _ = snapshot
+    # Formal duplicate conclusions always require the configured full window.
     return fallback_recent_count
 
 
@@ -740,6 +756,16 @@ def records_from_recent_snapshots(
             problems.append(CrawlProblem(snapshot.name, snapshot.url, "本页同栏目没有识别到可用期数"))
             print(f"[{done_count}/{len(snapshots)}] 无数据：{snapshot.url}")
             continue
+        if len(issues) != site_recent_count:
+            problems.append(
+                CrawlProblem(
+                    snapshot.name,
+                    snapshot.url,
+                    f"近{site_recent_count}期数据不足，实际只有{len(issues)}期",
+                )
+            )
+            print(f"[{done_count}/{len(snapshots)}] 数据不足：{snapshot.url}")
+            continue
 
         found, failure = records_from_snapshot(snapshot, issues)
         if found:
@@ -755,7 +781,8 @@ def records_from_recent_snapshots(
 
 
 def cache_site_key(name: str, url: str) -> tuple[str, str]:
-    return ("url", url.strip()) if url.strip() else ("name", name.strip())
+    normalized_url = url.strip().lower()
+    return ("url", normalized_url) if normalized_url else ("name", name.strip())
 
 
 def validate_cache_data(
@@ -764,8 +791,9 @@ def validate_cache_data(
     expected_recent_count: int | None = None,
     targets: list[dict] | None = None,
 ) -> list[dict]:
-    if not isinstance(data, dict) or data.get("version") != 1:
+    if not isinstance(data, dict) or data.get("version") not in {1, 2}:
         raise ValueError(f"缓存文件结构或版本错误：{path}")
+    version = int(data["version"])
     if not isinstance(data.get("generated_at"), str) or not data["generated_at"].strip():
         raise ValueError(f"缓存文件 generated_at 无效：{path}")
 
@@ -780,32 +808,11 @@ def validate_cache_data(
     records = data.get("records")
     if not isinstance(records, list) or not records:
         raise ValueError(f"缓存文件 records 缺失或为空：{path}")
-
     failure_records = data.get("failures", [])
     if not isinstance(failure_records, list):
         raise ValueError(f"缓存文件 failures 格式错误：{path}")
-    for index, item in enumerate(failure_records, start=1):
-        if not isinstance(item, dict):
-            raise ValueError(f"缓存文件第 {index} 条失败状态格式错误：{path}")
-        name = item.get("name")
-        url = item.get("url")
-        issue = issue_key(item.get("issue", ""))
-        status = item.get("status")
-        reason = item.get("reason")
-        if (
-            not isinstance(name, str)
-            or not name.strip()
-            or not isinstance(url, str)
-            or not isinstance(status, str)
-            or status != "failed"
-            or not isinstance(reason, str)
-            or not reason.strip()
-            or not issue
-            or "numbers" in item
-        ):
-            raise ValueError(f"缓存文件第 {index} 条失败状态无效：{path}")
 
-    seen_by_site_issue: dict[tuple[tuple[str, str], str], str] = {}
+    success_by_key: dict[tuple[tuple[str, str], str], dict] = {}
     available_sites: set[tuple[str, str]] = set()
     for index, item in enumerate(records, start=1):
         if not isinstance(item, dict):
@@ -823,15 +830,85 @@ def validate_cache_data(
             or not issue
         ):
             raise ValueError(f"缓存文件第 {index} 条记录字段无效：{path}")
-
         site = cache_site_key(name, url)
-        conflict_key = (site, issue)
+        key = (site, issue)
         normalized_numbers = normalize_numbers(numbers)
-        previous_numbers = seen_by_site_issue.get(conflict_key)
-        if previous_numbers is not None and previous_numbers != normalized_numbers:
+        previous = success_by_key.get(key)
+        if previous is not None and normalize_numbers(previous["numbers"]) != normalized_numbers:
             raise ValueError(f"缓存文件同站同期冲突：{name} {issue}期")
-        seen_by_site_issue[conflict_key] = normalized_numbers
+        success_by_key[key] = item
         available_sites.add(site)
+
+    failure_by_key: dict[tuple[tuple[str, str], str], dict] = {}
+    for index, item in enumerate(failure_records, start=1):
+        if not isinstance(item, dict):
+            raise ValueError(f"缓存文件第 {index} 条失败状态格式错误：{path}")
+        name = item.get("name")
+        url = item.get("url")
+        issue = issue_key(item.get("issue", ""))
+        status = item.get("status")
+        reason = item.get("reason")
+        if (
+            not isinstance(name, str)
+            or not name.strip()
+            or not isinstance(url, str)
+            or status != "failed"
+            or not isinstance(reason, str)
+            or not reason.strip()
+            or not issue
+            or "numbers" in item
+        ):
+            raise ValueError(f"缓存文件第 {index} 条失败状态无效：{path}")
+        key = (cache_site_key(name, url), issue)
+        failure_by_key[key] = item
+        available_sites.add(key[0])
+
+    overlap = set(success_by_key) & set(failure_by_key)
+    if overlap:
+        raise ValueError(f"缓存文件同站同期同时存在成功和失败：{sorted(overlap)!r}")
+
+    timeline_by_site: dict[tuple[str, str], list[dict]] = defaultdict(list)
+    if version == 2:
+        timeline = data.get("timeline")
+        if not isinstance(timeline, list) or not timeline:
+            raise ValueError(f"缓存版本2缺少 timeline：{path}")
+        seen_periods: set[tuple[tuple[str, str], int, str]] = set()
+        for index, entry in enumerate(timeline, start=1):
+            if not isinstance(entry, dict):
+                raise ValueError(f"缓存 timeline 第 {index} 条无效：{path}")
+            name = entry.get("name")
+            url = entry.get("url")
+            issue = issue_key(entry.get("issue", ""))
+            status = entry.get("status")
+            sequence = entry.get("sequence")
+            cycle = entry.get("cycle")
+            if (
+                not isinstance(name, str)
+                or not name.strip()
+                or not isinstance(url, str)
+                or not issue
+                or status not in {"success", "failed"}
+                or isinstance(sequence, bool)
+                or not isinstance(sequence, int)
+                or sequence <= 0
+                or isinstance(cycle, bool)
+                or not isinstance(cycle, int)
+                or cycle < 0
+            ):
+                raise ValueError(f"缓存 timeline 第 {index} 条字段无效：{path}")
+            site = cache_site_key(name, url)
+            period = (site, cycle, issue)
+            if period in seen_periods:
+                raise ValueError(f"缓存 timeline 同站同期冲突：{name} cycle={cycle} issue={issue}")
+            seen_periods.add(period)
+            payload_key = (site, issue)
+            if status == "success" and payload_key not in success_by_key:
+                raise ValueError(f"缓存 timeline 成功状态缺少号码：{name} {issue}期")
+            if status == "failed" and payload_key not in failure_by_key:
+                raise ValueError(f"缓存 timeline 失败状态缺少原因：{name} {issue}期")
+            timeline_by_site[site].append(entry)
+    elif targets is not None:
+        raise ValueError(f"缓存版本1缺少周期和顺序证据，正式判重前必须重建：{path}")
 
     if targets is not None:
         enabled_sites = {
@@ -846,14 +923,55 @@ def validate_cache_data(
         if missing:
             raise ValueError(f"缓存文件缺少启用目标：{', '.join(missing)}")
         unexpected_sites = available_sites - enabled_sites
-        unexpected = sorted({
-            str(item.get("name") or item.get("url") or "").strip()
-            for item in records
-            if cache_site_key(str(item.get("name") or ""), str(item.get("url") or ""))
-            in unexpected_sites
-        })
-        if unexpected:
-            raise ValueError(f"缓存文件包含未启用目标：{', '.join(unexpected)}")
+        if unexpected_sites:
+            raise ValueError(f"缓存文件包含未启用目标：{sorted(unexpected_sites)!r}")
+
+        for target in targets:
+            name = target_name(target)
+            url = str(target.get("url") or "")
+            site = cache_site_key(name, url)
+            entries = sorted(
+                timeline_by_site.get(site, []),
+                key=lambda entry: int(entry["sequence"]),
+            )
+            if len(entries) != recent_count:
+                raise ValueError(
+                    f"缓存文件 {name} 近{recent_count}期不完整：实际 {len(entries)} 期"
+                )
+            if any(entry["status"] != "success" for entry in entries):
+                raise ValueError(f"缓存文件 {name} 近{recent_count}期含失败状态，检测未完成")
+
+            expected_count = target.get("count")
+            previous_issue: int | None = None
+            previous_cycle: int | None = None
+            for entry in entries:
+                issue = issue_key(entry["issue"])
+                record = success_by_key[(site, issue)]
+                tokens = re.findall(r"\d{1,2}", normalize_numbers(record["numbers"]))
+                if expected_count and len(tokens) != expected_count:
+                    raise ValueError(
+                        f"缓存文件 {name} {issue}期号码数量 {len(tokens)}，配置要求 {expected_count}"
+                    )
+                if any(not 1 <= int(token) <= 49 for token in tokens):
+                    raise ValueError(f"缓存文件 {name} {issue}期包含01至49以外号码")
+                if not target.get("allow_duplicate_numbers", False) and len(tokens) != len(set(tokens)):
+                    raise ValueError(f"缓存文件 {name} {issue}期号码重复")
+
+                current_issue = int(issue)
+                current_cycle = int(entry["cycle"])
+                if previous_issue is not None:
+                    normal_next = current_cycle == previous_cycle and current_issue == previous_issue + 1
+                    wrapped_next = (
+                        current_cycle == previous_cycle + 1
+                        and previous_issue >= 360
+                        and current_issue <= 5
+                    )
+                    if not normal_next and not wrapped_next:
+                        raise ValueError(
+                            f"缓存文件 {name} 期号不连续：{previous_issue}期 -> {current_issue}期"
+                        )
+                previous_issue = current_issue
+                previous_cycle = current_cycle
     return records
 
 
@@ -871,23 +989,55 @@ def write_records_cache(
     if region_problems:
         raise ValueError(f"存在 {len(region_problems)} 个 region 配置异常，拒绝覆盖正式缓存")
 
+    payload_records = [
+        {
+            "name": record.name,
+            "url": record.url,
+            "issue": issue_key(record.issue),
+            "numbers": record.numbers,
+        }
+        for record in records
+    ]
+    by_site: dict[tuple[str, str], list[dict]] = defaultdict(list)
+    for record in payload_records:
+        by_site[cache_site_key(record["name"], record["url"])].append(record)
+
+    timeline: list[dict] = []
+    sequence = 0
+    for site_records in by_site.values():
+        cycle = 0
+        previous_issue: int | None = None
+        for record in site_records:
+            current_issue = int(issue_key(record["issue"]))
+            if previous_issue is not None and previous_issue - current_issue >= 100:
+                cycle += 1
+            elif previous_issue is not None and current_issue < previous_issue:
+                raise ValueError(
+                    f"{record['name']} 期号顺序无法确认：{previous_issue}期 -> {current_issue}期"
+                )
+            sequence += 1
+            timeline.append(
+                {
+                    "name": record["name"],
+                    "url": record["url"],
+                    "issue": record["issue"],
+                    "status": "success",
+                    "sequence": sequence,
+                    "cycle": cycle,
+                }
+            )
+            previous_issue = current_issue
+
     data = {
-        "version": 1,
+        "version": 2,
         "generated_at": datetime.now().isoformat(timespec="seconds"),
         "recent_count": recent_count,
-        "records": [
-            {
-                "name": record.name,
-                "url": record.url,
-                "issue": issue_key(record.issue),
-                "numbers": record.numbers,
-            }
-            for record in records
-        ],
+        "run_sequence": sequence,
+        "records": payload_records,
         "failures": [],
+        "timeline": timeline,
     }
     validate_cache_data(data, path, expected_recent_count=recent_count, targets=targets)
-
     atomic_write_json(path, data, trailing_newline=False)
 
 
@@ -1084,7 +1234,9 @@ def write_report_v2(
     latest_issue: str | None = None,
 ) -> None:
     region_problems = region_problems or []
+    complete = not problems and not region_problems and not bad_lines
     lines: list[str] = []
+    lines.append(f"检测状态：{'完整' if complete else '检测未完成'}")
     lines.append("重复检测结果")
     lines.append("")
     lines.append("判断规则：同一期内，原始号码整串顺序完全一致 = 重复；不自动排序；不检测部分相同。")
@@ -1121,7 +1273,11 @@ def write_report_v2(
                 lines.append(f"   - {format_issue(issue)}：{numbers}")
             lines.append("")
     else:
-        lines.append("没有发现达到连续3期以上的同网站重复风险。")
+        lines.append(
+            "没有发现达到连续3期以上的同网站重复风险。"
+            if complete
+            else "检测未完成，不能得出无重复结论。"
+        )
         lines.append("")
 
     lines.append("一、同一期重复")
@@ -1138,7 +1294,11 @@ def write_report_v2(
                 lines.append(f"     网址：{item.url or '未匹配到'}")
             lines.append("")
     else:
-        lines.append("没有发现同一期整串重复。")
+        lines.append(
+            "没有发现同一期整串重复。"
+            if complete
+            else "检测未完成，不能得出同一期无重复结论。"
+        )
         lines.append("")
 
     lines.append("二、跨期重复")
@@ -1165,7 +1325,11 @@ def write_report_v2(
                 lines.append(f"     网址：{item.url or '未匹配到'}")
             lines.append("")
     else:
-        lines.append("没有发现跨期整串重复。")
+        lines.append(
+            "没有发现跨期整串重复。"
+            if complete
+            else "检测未完成，不能得出跨期无重复结论。"
+        )
         lines.append("")
 
     section_no = 3
@@ -1245,6 +1409,8 @@ def _main_unlocked() -> int:
     else:
         if args.issues and args.latest:
             parser.error("--issues 和 --latest 只能二选一")
+        if args.latest and args.write_cache:
+            parser.error("--latest 使用全局期数，禁止据此覆盖正式缓存；请不带 --latest 运行按站点检测")
         if args.issues or args.latest:
             import crawler
 
@@ -1334,6 +1500,12 @@ def _main_unlocked() -> int:
 
     print(f"完成：读取 {len(records)} 条，连续重复风险 {len(site_matches)} 组，同期重复 {len(duplicates)} 组，跨期重复 {len(cross_duplicates)} 组")
     print(f"报告：{args.output}")
+    if problems or region_problems or bad_lines:
+        return 4
+    if any(item.status == "reject" for item in site_matches):
+        return 6
+    if any(item.status == "suspect" for item in site_matches):
+        return 5
     return 0
 
 
@@ -1344,6 +1516,9 @@ def main() -> int:
     except RuntimeError as exc:
         print(str(exc))
         return 2
+    except (OSError, ValueError) as exc:
+        print(f"检测未完成：{exc}")
+        return 4
 
 
 if __name__ == "__main__":

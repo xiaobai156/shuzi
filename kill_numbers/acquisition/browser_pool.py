@@ -1,3 +1,6 @@
+import os
+import threading
+
 from kill_numbers.acquisition.http_client import HEADERS
 from kill_numbers.acquisition.documents import make_source_document
 from kill_numbers.acquisition.discovery import decode_strdecode_payloads
@@ -5,11 +8,15 @@ from kill_numbers.domain.models import SourceDocument
 from kill_numbers.text_utils import remove_fragment
 
 
+_BROWSER_CONCURRENCY = max(1, int(os.environ.get("SHUZI_BROWSER_CONCURRENCY", "2")))
+_BROWSER_SEMAPHORE = threading.BoundedSemaphore(_BROWSER_CONCURRENCY)
+
+
 def _render_page_parts(url: str, timeout: int) -> tuple[str, str]:
     from playwright.sync_api import sync_playwright
 
     page_url = remove_fragment(url)
-    with sync_playwright() as playwright:
+    with _BROWSER_SEMAPHORE, sync_playwright() as playwright:
         browser = playwright.chromium.launch(headless=True)
         try:
             context = browser.new_context(

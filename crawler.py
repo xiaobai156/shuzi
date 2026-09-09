@@ -1,4 +1,5 @@
 import argparse
+import os
 import re
 import sys
 import time
@@ -101,6 +102,7 @@ from kill_numbers.parsing.common import (
     iter_all_issue_segment_matches,
     needs_strict_region_window,
     normalize_region,
+    resolve_candidate_window,
     scope_text_by_anchor,
     scope_text_by_anchor_with_offset,
     select_candidate,
@@ -190,7 +192,12 @@ BACKUP_KEEP = 10
 SCRIPT_DIR = Path(__file__).resolve().parent
 TARGETS_FILE = SCRIPT_DIR / "targets.json"
 DEBUG_DIR = SCRIPT_DIR / "debug_pages"
-RESULTS_DIR = Path(r"C:\Users\Administrator\Desktop\每天工具\爬虫合集\大围杀号生肖数据统一归纳")
+RESULTS_DIR = Path(
+    os.environ.get(
+        "SHUZI_RESULTS_DIR",
+        r"C:\Users\Administrator\Desktop\每天工具\爬虫合集\大围杀号生肖数据统一归纳",
+    )
+).expanduser()
 
 
 def configure_output_encoding() -> None:
@@ -230,6 +237,28 @@ def load_targets(path: Path = TARGETS_FILE) -> list[dict]:
         count = item.get("count")
         if count is not None and (not isinstance(count, int) or isinstance(count, bool) or count <= 0):
             raise ValueError(f"targets.json 第 {index} 条 count 必须是正整数")
+        issue_window = item.get("issue_position_window")
+        if issue_window is not None and (
+            isinstance(issue_window, bool)
+            or not isinstance(issue_window, int)
+            or issue_window <= 0
+        ):
+            raise ValueError(
+                f"targets.json 第 {index} 条 issue_position_window 必须是正整数"
+            )
+        position = item.get("position", "first")
+        if position not in {"first", "last"}:
+            raise ValueError(f"targets.json 第 {index} 条 position 只能是 first/last")
+        for boolean_field in (
+            "allow_ambiguous",
+            "allow_duplicate_numbers",
+            "disabled",
+            "browser_fallback",
+        ):
+            if boolean_field in item and not isinstance(item[boolean_field], bool):
+                raise ValueError(
+                    f"targets.json 第 {index} 条 {boolean_field} 必须是布尔值"
+                )
         keywords = item.get("keywords")
         if keywords is not None and (
             not isinstance(keywords, list)
@@ -887,6 +916,7 @@ def _directional_parseable_documents(
         return parseable
 
     region = normalize_region(target.get("region"))
+    window = resolve_candidate_window(target.get("issue_position_window"))
     selected_ids: set[int] = set()
     for group in groups.values():
         ordered = sorted(
@@ -894,9 +924,9 @@ def _directional_parseable_documents(
             key=lambda document: int(document.metadata["region_index"]),
         )
         selected = (
-            ordered[:CANDIDATE_REGION_WINDOW]
+            ordered[:window]
             if region == "top"
-            else ordered[-CANDIDATE_REGION_WINDOW:]
+            else ordered[-window:]
             if region == "bottom"
             else ordered
         )
@@ -1498,6 +1528,11 @@ def _main_unlocked() -> int:
     if not issues:
         print("请指定期数，例如：python crawler.py --issues 119")
         return 2
+    if len(issues) != 1:
+        print("正式 crawler.py 每次只允许一个期数；多个期数请使用多期入口逐期执行。")
+        return 2
+
+    print(f"正式输出目录：{RESULTS_DIR}")
 
     # Risk checks belong to the formal target pipeline.  This entrypoint must
     # not fetch risky sites twice or mutate targets.json during a run.

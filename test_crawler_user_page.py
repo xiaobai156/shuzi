@@ -24,7 +24,7 @@ def test_windowed_available_issues_scans_the_top_window_once(monkeypatch):
         anchor="条纹妇人",
         region="top",
         issue_position_window=4,
-    ) == ["210", "209", "208"]
+    ) == ["210", "209", "208", "207"]
 
 
 def test_top_window_does_not_accept_an_old_issue():
@@ -64,7 +64,7 @@ def test_top_window_conflict_still_fails_closed():
         )
 
 
-def test_direction_window_is_always_top_three_or_bottom_three():
+def test_direction_window_honors_explicit_configured_size():
     text = "条纹妇人\n" + "\n".join(issue_row(issue) for issue in range(210, 204, -1))
 
     assert crawler.extract_issue_numbers(
@@ -75,7 +75,7 @@ def test_direction_window_is_always_top_three_or_bottom_three():
         anchor="条纹妇人",
         region="top",
         issue_position_window=30,
-    ) == {}
+    ) == {"207": ["01", "02", "03", "04", "05", "06", "07", "08", "09", "10"]}
     assert crawler.extract_issue_numbers(
         text,
         ["208"],
@@ -84,7 +84,7 @@ def test_direction_window_is_always_top_three_or_bottom_three():
         anchor="条纹妇人",
         region="bottom",
         issue_position_window=30,
-    ) == {}
+    ) == {"208": ["01", "02", "03", "04", "05", "06", "07", "08", "09", "10"]}
 
 
 def test_top_user_page_extracts_once_after_a_forum_page(monkeypatch):
