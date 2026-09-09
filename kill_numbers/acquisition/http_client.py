@@ -4,14 +4,21 @@ import json
 import random
 import re
 import shutil
+import socket
 import ssl
+import tempfile
+import os
 import subprocess
 import threading
 import time
-from urllib.error import HTTPError
+from urllib.error import HTTPError, URLError
 from urllib.parse import urlparse
 from urllib.request import Request, build_opener, HTTPSHandler, HTTPRedirectHandler
-from kill_numbers.acquisition.policy import validate_request_url, insecure_for
+from kill_numbers.acquisition.policy import (
+    allow_discovered_child_url,
+    validate_request_url,
+    insecure_for,
+)
 
 MAX_RESPONSE_BYTES = 8 * 1024 * 1024
 
@@ -24,10 +31,157 @@ class SafeRedirectHandler(HTTPRedirectHandler):
         return super().redirect_request(req, fp, code, msg, headers, newurl)
 
 
-def urlopen(request, *, timeout, context):
-    opener = build_opener(HTTPSHandler(context=context), SafeRedirectHandler())
+def urlopen(request, *, timeout, context, redirect_handler=None):
+    opener = build_opener(
+        HTTPSHandler(context=context),
+        redirect_handler or SafeRedirectHandler(),
+    )
     return opener.open(request, timeout=timeout)
 
+
+
+class SameHostHTTPSRedirectHandler(SafeRedirectHandler):
+    def __init__(self, expected_host: str):
+        super().__init__()
+        self.expected_host = expected_host.rstrip('.').lower()
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        parsed = urlparse(newurl)
+        if parsed.scheme.lower() != 'https' or (parsed.hostname or '').rstrip('.').lower() != self.expected_host:
+            raise ValueError('正文脚本重定向离开原HTTPS主机，已拒绝')
+        return super().redirect_request(req, fp, code, msg, headers, newurl)
+
+
+def _exception_chain(exc):
+    seen = set()
+    current = exc
+    while current is not None and id(current) not in seen:
+        seen.add(id(current))
+        yield current
+        current = getattr(current, 'reason', None) or getattr(current, '__cause__', None)
+
+
+def is_incomplete_tls_chain_error(exc) -> bool:
+    markers = (
+        'unable to get local issuer certificate',
+        'unable to verify the first certificate',
+    )
+    return any(
+        any(marker in str(item).lower() for marker in markers)
+        for item in _exception_chain(exc)
+    )
+
+
+def _dns_pattern_matches(pattern: str, hostname: str) -> bool:
+    pattern = pattern.rstrip('.').lower()
+    hostname = hostname.rstrip('.').lower()
+    if pattern.startswith('*.'):
+        suffix = pattern[1:]
+        return hostname.endswith(suffix) and hostname.count('.') == pattern.count('.')
+    return pattern == hostname
+
+
+def certificate_dict_matches_hostname(cert: dict, hostname: str) -> bool:
+    dns_names = [
+        value
+        for kind, value in cert.get('subjectAltName', ())
+        if kind == 'DNS'
+    ]
+    if dns_names:
+        return any(_dns_pattern_matches(pattern, hostname) for pattern in dns_names)
+    common_names = [
+        value
+        for rdn in cert.get('subject', ())
+        for kind, value in rdn
+        if kind == 'commonName'
+    ]
+    return any(_dns_pattern_matches(pattern, hostname) for pattern in common_names)
+
+
+def _peer_certificate_matches_hostname(url: str, timeout: int) -> bool:
+    validate_request_url(url)
+    parsed = urlparse(url)
+    if parsed.scheme.lower() != 'https' or not parsed.hostname:
+        return False
+    host = parsed.hostname.rstrip('.').lower()
+    port = parsed.port or 443
+    context = ssl._create_unverified_context()
+    with socket.create_connection((host, port), timeout=min(timeout, 10)) as raw_socket:
+        with context.wrap_socket(raw_socket, server_hostname=host) as tls_socket:
+            der = tls_socket.getpeercert(binary_form=True)
+    if not der:
+        return False
+    fd, cert_path = tempfile.mkstemp(prefix='shuzi-cert-', suffix='.pem')
+    try:
+        with os.fdopen(fd, 'wb') as cert_file:
+            cert_file.write(ssl.DER_cert_to_PEM_cert(der).encode('ascii'))
+        fd = -1
+        cert = ssl._ssl._test_decode_cert(cert_path)
+    finally:
+        if fd >= 0:
+            os.close(fd)
+        try:
+            os.unlink(cert_path)
+        except OSError:
+            pass
+    return certificate_dict_matches_hostname(cert, host)
+
+
+def _content_script_once(url: str, parent_url: str, timeout: int, context: ssl.SSLContext) -> bytes:
+    parsed = urlparse(url)
+    host = (parsed.hostname or '').rstrip('.').lower()
+    if parsed.scheme.lower() != 'https' or not host:
+        raise ValueError('正文脚本窄范围链修复只允许HTTPS')
+    headers = {
+        **HEADERS,
+        'Referer': parent_url,
+        'Accept': 'application/javascript,text/javascript,application/x-javascript,*/*;q=0.1',
+    }
+    wait_for_host_slot(url)
+    with urlopen(
+        Request(url, headers=headers),
+        timeout=timeout,
+        context=context,
+        redirect_handler=SameHostHTTPSRedirectHandler(host),
+    ) as response:
+        final_url = response.geturl()
+        validate_request_url(final_url)
+        final = urlparse(final_url)
+        if final.scheme.lower() != 'https' or (final.hostname or '').rstrip('.').lower() != host:
+            raise ValueError('正文脚本最终URL离开原HTTPS主机，已拒绝')
+        content_type = str(response.headers.get('Content-Type', '')).lower().split(';', 1)[0].strip()
+        if 'javascript' not in content_type:
+            raise ValueError(f'正文脚本Content-Type异常：{content_type or "缺失"}')
+        data = response.read(MAX_RESPONSE_BYTES + 1)
+        if len(data) > MAX_RESPONSE_BYTES:
+            raise ValueError('响应超过大小限制')
+        return data
+
+
+def fetch_content_script_text(url: str, parent_url: str, timeout: int = 25) -> tuple[str, bool]:
+    """Fetch one direct content script with a tightly scoped chain-only fallback.
+
+    Normal certificate verification is always attempted first.  A second
+    unverified-chain request is permitted only for the two explicit incomplete
+    chain errors and only after the leaf certificate SAN/CN matches the exact
+    requested hostname.  Hostname mismatch never enters this path.
+    """
+    with allow_discovered_child_url(url):
+        try:
+            data = _content_script_once(url, parent_url, timeout, SSL_CONTEXT)
+            return decode_response(data), False
+        except Exception as exc:
+            if not is_incomplete_tls_chain_error(exc):
+                raise
+            if not _peer_certificate_matches_hostname(url, timeout):
+                raise ValueError('正文脚本证书链不完整且叶子证书主机名不匹配，已拒绝') from exc
+            data = _content_script_once(
+                url,
+                parent_url,
+                timeout,
+                ssl._create_unverified_context(),
+            )
+            return decode_response(data), True
 
 
 REQUEST_RETRIES = 2

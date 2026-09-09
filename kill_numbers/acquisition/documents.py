@@ -4,15 +4,17 @@ from kill_numbers.acquisition.policy import CURRENT_POLICY
 import re
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
-from urllib.parse import urlparse
+from urllib.parse import urljoin, urlparse
 
 from kill_numbers.acquisition.discovery import (
     SCRIPT_WORKERS,
     decode_strdecode_payloads,
     iframe_urls,
+    is_content_script_url,
+    render_document_write_stream,
     script_urls,
 )
-from kill_numbers.acquisition.http_client import fetch_text
+from kill_numbers.acquisition.http_client import fetch_content_script_text, fetch_text
 from kill_numbers.domain.models import SourceDocument
 from kill_numbers.text_utils import (
     extract_name_from_text,
@@ -94,6 +96,40 @@ def child_page_region(raw_html: str, child_url: str) -> str:
     return "top" if min(positions) < len(raw_html) / 2 else "bottom"
 
 
+def render_scripted_page(
+    raw_html: str,
+    page_url: str,
+    script_outputs: dict[str, str],
+) -> tuple[str | None, int]:
+    """Replace every direct content-script tag with its proven write stream.
+
+    The page is emitted only when every /upload/script/ tag can be replayed.
+    Leaving one such script unresolved could create a misleading partial DOM.
+    """
+    script_tag = re.compile(
+        r"<script\b(?P<attrs>[^>]*)\bsrc=[\"'](?P<src>[^\"']+)[\"'][^>]*>.*?</script\s*>",
+        re.I | re.S,
+    )
+    expected = 0
+    replaced = 0
+
+    def replace_tag(match):
+        nonlocal expected, replaced
+        absolute = urljoin(page_url, match.group("src"))
+        if not is_content_script_url(absolute):
+            return match.group(0)
+        expected += 1
+        if absolute not in script_outputs:
+            return match.group(0)
+        replaced += 1
+        return script_outputs[absolute]
+
+    rendered = script_tag.sub(replace_tag, raw_html)
+    if expected == 0 or replaced != expected:
+        return None, replaced
+    return visible_html_document(rendered), replaced
+
+
 def _embedded_documents(
     raw_html: str,
     page_url: str,
@@ -172,11 +208,20 @@ def discover_static_documents(url: str) -> tuple[str, list[SourceDocument]]:
         for child_url in iframe_urls(raw_page, page_url)
     )
 
-    def fetch_child(kind_and_url: tuple[str, str]) -> tuple[str, str, str]:
+    def fetch_child(kind_and_url: tuple[str, str]) -> tuple[str, str, str, dict]:
         kind, child_url = kind_and_url
-        return kind, child_url, fetch_text(child_url)
+        if kind == "script" and is_content_script_url(child_url):
+            content, tls_chain_unverified = fetch_content_script_text(
+                child_url,
+                page_url,
+            )
+            return kind, child_url, content, {
+                "content_script": True,
+                "tls_chain_unverified": tls_chain_unverified,
+            }
+        return kind, child_url, fetch_text(child_url), {}
 
-    child_results: dict[tuple[str, str], str] = {}
+    child_results: dict[tuple[str, str], tuple[str, dict]] = {}
     if child_requests:
         workers = min(max(SCRIPT_WORKERS, 1), len(child_requests))
         with ThreadPoolExecutor(max_workers=workers) as executor:
@@ -186,15 +231,58 @@ def discover_static_documents(url: str) -> tuple[str, list[SourceDocument]]:
             }
             for future in as_completed(future_map):
                 try:
-                    kind, child_url, content = future.result()
+                    kind, child_url, content, transport_metadata = future.result()
                 except Exception:
                     continue
-                child_results[(kind, child_url)] = content
+                child_results[(kind, child_url)] = (content, transport_metadata)
+
+    content_script_urls = [
+        child_url
+        for kind, child_url in child_requests
+        if kind == "script" and is_content_script_url(child_url)
+    ]
+    script_outputs: dict[str, str] = {}
+    complete_script_page = bool(content_script_urls)
+    tls_chain_unverified_count = 0
+    for child_url in content_script_urls:
+        result = child_results.get(("script", child_url))
+        if result is None:
+            complete_script_page = False
+            break
+        content, metadata = result
+        output = render_document_write_stream(content)
+        if output is None:
+            complete_script_page = False
+            break
+        script_outputs[child_url] = output
+        tls_chain_unverified_count += int(metadata.get("tls_chain_unverified") is True)
+    if complete_script_page:
+        rendered_page, rendered_count = render_scripted_page(
+            raw_page,
+            page_url,
+            script_outputs,
+        )
+        if rendered_page:
+            documents.append(
+                make_source_document(
+                    kind="rendered_script_page",
+                    url=page_url,
+                    content=rendered_page,
+                    priority=110,
+                    metadata={
+                        "parseable": True,
+                        "rendered_content_scripts": rendered_count,
+                        "tls_chain_unverified_scripts": tls_chain_unverified_count,
+                        "script_sources": list(content_script_urls),
+                    },
+                )
+            )
 
     for kind, child_url in child_requests:
-        content = child_results.get((kind, child_url))
-        if content is None:
+        result = child_results.get((kind, child_url))
+        if result is None:
             continue
+        content, transport_metadata = result
         page_region = child_page_region(raw_page, child_url)
         if kind == "script":
             documents.append(
@@ -204,9 +292,15 @@ def discover_static_documents(url: str) -> tuple[str, list[SourceDocument]]:
                     parent_url=page_url,
                     content=content,
                     priority=70,
-                    metadata={"parseable": bool(re.search(r"document\.write(?:ln)?\s*\(", content))
-                        or bool(CURRENT_POLICY.get().source_url_pattern and re.search(CURRENT_POLICY.get().source_url_pattern, child_url, re.I)),
-                        "page_region": page_region},
+                    metadata={
+                        "parseable": bool(re.search(r"document\.write(?:ln)?\s*\(", content))
+                        or bool(
+                            CURRENT_POLICY.get().source_url_pattern
+                            and re.search(CURRENT_POLICY.get().source_url_pattern, child_url, re.I)
+                        ),
+                        "page_region": page_region,
+                        **transport_metadata,
+                    },
                 )
             )
             decoded_values = decode_strdecode_payloads(content)
@@ -222,6 +316,7 @@ def discover_static_documents(url: str) -> tuple[str, list[SourceDocument]]:
                             "parseable": True,
                             "component_index": index,
                             "page_region": page_region,
+                            **transport_metadata,
                         },
                     )
                 )

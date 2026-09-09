@@ -25,7 +25,12 @@ VALID_SOURCE_TYPES = frozenset({
 def source_type_family(document) -> str:
     """Map concrete SourceDocument kinds to stable configuration families."""
     kind = str(getattr(document, "kind", "") or "")
-    if kind in {"decoded_script", "decoded_script_stream", "decoded_script_component"}:
+    if kind in {
+        "decoded_script",
+        "decoded_script_stream",
+        "decoded_script_component",
+        "rendered_script_page",
+    }:
         return "decoded_script"
     if kind in {"decoded_inline_stream", "decoded_inline_component"}:
         return "decoded_inline"

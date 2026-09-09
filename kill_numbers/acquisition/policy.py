@@ -1,7 +1,7 @@
 """Small per-target transport policy, copied to child-fetch/browser workers."""
 from contextlib import contextmanager
 from contextvars import ContextVar
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 import ipaddress
 import socket
 from urllib.parse import urlsplit
@@ -72,16 +72,14 @@ def child_url_allowed(url, parent_url):
         return False
 
 
-def validate_request_url(url, *, resolve=True):
+def validate_public_request_url(url, *, resolve=True):
+    """Validate transport safety without granting target-origin authority."""
     parsed = urlsplit(url)
     if parsed.scheme not in ('http', 'https') or not parsed.hostname or parsed.username or parsed.password:
         raise ValueError('采集URL只允许无内嵌凭据的http/https地址')
     hostname = parsed.hostname.rstrip('.').lower()
     if hostname == 'localhost' or hostname.endswith('.localhost'):
         raise ValueError('禁止访问本地/私有网络地址')
-    policy = CURRENT_POLICY.get()
-    if policy.origins and url_origin(url) not in policy.origins and hostname not in policy.allowed_hosts:
-        raise ValueError('跨域来源未获目标配置授权')
     try:
         literal = ipaddress.ip_address(hostname)
     except ValueError:
@@ -89,10 +87,46 @@ def validate_request_url(url, *, resolve=True):
     if literal is not None and not literal.is_global:
         raise ValueError('禁止访问本地/私有网络地址')
     if resolve:
-        infos = socket.getaddrinfo(hostname, parsed.port or (443 if parsed.scheme == 'https' else 80), type=socket.SOCK_STREAM)
-        if not infos or any(not ipaddress.ip_address(info[4][0].split('%')[0]).is_global for info in infos):
+        infos = socket.getaddrinfo(
+            hostname,
+            parsed.port or (443 if parsed.scheme == 'https' else 80),
+            type=socket.SOCK_STREAM,
+        )
+        if not infos or any(
+            not ipaddress.ip_address(info[4][0].split('%')[0]).is_global
+            for info in infos
+        ):
             raise ValueError('DNS指向本地/私有网络地址，已拒绝')
     return url
+
+
+def validate_request_url(url, *, resolve=True):
+    validate_public_request_url(url, resolve=resolve)
+    parsed = urlsplit(url)
+    hostname = parsed.hostname.rstrip('.').lower()
+    policy = CURRENT_POLICY.get()
+    if policy.origins and url_origin(url) not in policy.origins and hostname not in policy.allowed_hosts:
+        raise ValueError('跨域来源未获目标配置授权')
+    return url
+
+
+@contextmanager
+def allow_discovered_child_url(url):
+    """Temporarily authorize one already-discovered public child hostname.
+
+    This does not persist in the target configuration and is intentionally used
+    only for direct content-script URLs that were present in the root HTML.
+    """
+    validate_public_request_url(url)
+    hostname = (urlsplit(url).hostname or '').rstrip('.').lower()
+    current = CURRENT_POLICY.get()
+    token = CURRENT_POLICY.set(
+        replace(current, allowed_hosts=current.allowed_hosts | frozenset({hostname}))
+    )
+    try:
+        yield
+    finally:
+        CURRENT_POLICY.reset(token)
 
 
 def insecure_for(url):

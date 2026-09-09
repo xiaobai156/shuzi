@@ -30,9 +30,10 @@ def test_dns_private_address_is_rejected_before_transport(monkeypatch):
     with pytest.raises(ValueError,match='DNS'):policy.validate_request_url('https://a.test')
 
 
-def test_script_path_does_not_authorize_cross_origin():
-    assert not discovery.is_fetchable_script('https://evil.test/upload/script/x.js','https://a.test')
-    assert discovery.iframe_urls('<iframe src="https://evil.test/x"></iframe>','https://a.test')==[]
+def test_script_path_only_authorizes_direct_content_script_discovery():
+    assert discovery.is_fetchable_script('https://evil.test/upload/script/x.js','https://a.test')
+    assert not discovery.is_fetchable_script('https://evil.test/static/x.js','https://a.test')
+    assert discovery.iframe_urls('<iframe src="https://evil.test/upload/script/x.js"></iframe>','https://a.test')==[]
     with policy.target_policy({'url':'https://a.test','allowed_resource_hosts':['cdn.test']}):
         assert discovery.is_fetchable_script('https://cdn.test/x.js','https://a.test')
         assert not discovery.is_fetchable_script('https://cdn.test.evil.test/x.js','https://a.test')
@@ -146,3 +147,165 @@ def test_populated_admin_article_missing_issue_does_not_search_other_sources(mon
     _,content=admin.crawl_admin_article_page('https://a.test/article/admin/1?url=site',{},['215'],
         content_matches=lambda *a:False,render_page=lambda *a:pytest.fail('browser forbidden'))
     assert '214期' in content and '215期' not in content
+
+
+def test_direct_public_content_script_is_discoverable_but_arbitrary_cross_origin_is_not(monkeypatch):
+    public_dns(monkeypatch)
+    page = 'https://a.test/topic/1.html'
+    content_script = 'https://xia01.cosds.example/upload/script/09/body.js'
+    assert discovery.is_fetchable_script(content_script, page)
+    assert not discovery.is_fetchable_script('https://xia01.cosds.example/static/jquery.js', page)
+    assert discovery.iframe_urls('<iframe src="https://xia01.cosds.example/upload/script/x.js"></iframe>', page) == []
+    assert not policy.child_url_allowed(content_script, page)
+    with policy.target_policy({'url': page}):
+        assert not policy.child_url_allowed(content_script, page)
+        with policy.allow_discovered_child_url(content_script):
+            assert policy.child_url_allowed(content_script, page)
+        assert not policy.child_url_allowed(content_script, page)
+
+
+def test_document_write_stream_replays_only_proven_static_calls_in_order():
+    import base64
+    first = base64.b64encode('作者:甲\n'.encode()).decode()
+    second = base64.b64encode('252期 绝杀10码 01 02 03\n'.encode()).decode()
+    script = (
+        f'document.write(utf8to16(strdecode("{first}")));'
+        f'document.writeln(strdecode("{second}"));'
+    )
+    assert discovery.render_document_write_stream(script) == '作者:甲\n252期 绝杀10码 01 02 03\n\n'
+    # Raw independent decoder calls are observations, not browser write semantics.
+    assert discovery.render_document_write_stream(
+        f'const a=strdecode("{first}"); const b=strdecode("{second}");'
+    ) is None
+    assert discovery.render_document_write_stream('document.write(getRemoteValue())') is None
+
+
+def test_content_script_tls_fallback_only_for_incomplete_chain_and_matching_leaf(monkeypatch):
+    from urllib.error import URLError
+
+    public_dns(monkeypatch)
+    monkeypatch.setattr(http_client, 'wait_for_host_slot', lambda url: None)
+    calls = []
+
+    class Headers(dict):
+        def get(self, key, default=None):
+            return super().get(key, default)
+
+    class Response(io.BytesIO):
+        headers = Headers({'Content-Type': 'application/javascript'})
+        def geturl(self):
+            return 'https://cdn.test/upload/script/a.js'
+        def __enter__(self):
+            return self
+        def __exit__(self, *args):
+            return False
+
+    def fake_urlopen(req, **kwargs):
+        calls.append(kwargs['context'].verify_mode)
+        if len(calls) == 1:
+            raise URLError(ssl.SSLCertVerificationError('unable to get local issuer certificate'))
+        return Response(b'document.write("ok")')
+
+    monkeypatch.setattr(http_client, 'urlopen', fake_urlopen)
+    monkeypatch.setattr(http_client, '_peer_certificate_matches_hostname', lambda *a, **k: True)
+    with policy.target_policy({'url': 'https://page.test/topic/1'}):
+        text, bypassed = http_client.fetch_content_script_text(
+            'https://cdn.test/upload/script/a.js',
+            'https://page.test/topic/1',
+        )
+    assert text == 'document.write("ok")'
+    assert bypassed is True
+    assert calls == [ssl.CERT_REQUIRED, ssl.CERT_NONE]
+
+
+def test_content_script_hostname_mismatch_or_other_tls_failure_never_bypasses(monkeypatch):
+    from urllib.error import URLError
+
+    public_dns(monkeypatch)
+    monkeypatch.setattr(http_client, 'wait_for_host_slot', lambda url: None)
+    leaf_calls = []
+
+    def incomplete(req, **kwargs):
+        raise URLError(ssl.SSLCertVerificationError('unable to verify the first certificate'))
+
+    monkeypatch.setattr(http_client, 'urlopen', incomplete)
+    monkeypatch.setattr(
+        http_client,
+        '_peer_certificate_matches_hostname',
+        lambda *a, **k: leaf_calls.append(1) or False,
+    )
+    with policy.target_policy({'url': 'https://page.test/topic/1'}):
+        with pytest.raises(ValueError, match='主机名不匹配'):
+            http_client.fetch_content_script_text(
+                'https://cdn.test/upload/script/a.js',
+                'https://page.test/topic/1',
+            )
+    assert leaf_calls == [1]
+
+    leaf_calls.clear()
+    def hostname_failure(req, **kwargs):
+        raise URLError(ssl.SSLCertVerificationError('hostname mismatch'))
+    monkeypatch.setattr(http_client, 'urlopen', hostname_failure)
+    with policy.target_policy({'url': 'https://page.test/topic/1'}):
+        with pytest.raises(URLError):
+            http_client.fetch_content_script_text(
+                'https://cdn.test/upload/script/a.js',
+                'https://page.test/topic/1',
+            )
+    assert leaf_calls == []
+
+
+def test_leaf_certificate_wildcard_match_is_one_label_only():
+    cert = {'subjectAltName': (('DNS', '*.cosds.aohjifv.com'), ('DNS', 'cosds.aohjifv.com'))}
+    assert http_client.certificate_dict_matches_hostname(cert, 'xia01.cosds.aohjifv.com')
+    assert http_client.certificate_dict_matches_hostname(cert, 'cosds.aohjifv.com')
+    assert not http_client.certificate_dict_matches_hostname(cert, 'a.b.cosds.aohjifv.com')
+    assert not http_client.certificate_dict_matches_hostname(cert, 'evil-aohjifv.com')
+
+
+def test_rendered_script_page_preserves_real_script_tag_order(monkeypatch):
+    from kill_numbers.acquisition import documents
+    import base64
+
+    page = 'https://page.test/topic/1'
+    one = 'https://cdn.test/upload/script/one.js'
+    two = 'https://cdn.test/upload/script/two.js'
+    a = base64.b64encode('<div class="topic-content">作者:甲\n'.encode()).decode()
+    b = base64.b64encode('252期 绝杀10码【01 02 03】</div>'.encode()).decode()
+    raw = f'<html><script src="{one}"></script><span>中间</span><script src="{two}"></script></html>'
+    scripts = {
+        one: f'document.write(strdecode("{a}"));',
+        two: f'document.write(strdecode("{b}"));',
+    }
+    monkeypatch.setattr(documents, 'fetch_text', lambda url: raw if url == page else pytest.fail(url))
+    monkeypatch.setattr(
+        documents,
+        'fetch_content_script_text',
+        lambda url, parent_url: (scripts[url], True),
+    )
+    public_dns(monkeypatch)
+    with policy.target_policy({'url': page}):
+        _name, found = documents.discover_static_documents(page)
+    rendered = [item for item in found if item.kind == 'rendered_script_page']
+    assert len(rendered) == 1
+    assert '作者:甲' in rendered[0].content
+    assert '中间' in rendered[0].content
+    assert '252期' in rendered[0].content
+    assert rendered[0].content.index('作者:甲') < rendered[0].content.index('中间') < rendered[0].content.index('252期')
+    assert rendered[0].metadata['tls_chain_unverified_scripts'] == 2
+
+
+def test_rendered_script_page_is_not_emitted_when_one_content_script_is_unresolved(monkeypatch):
+    from kill_numbers.acquisition import documents
+
+    page = 'https://page.test/topic/1'
+    one = 'https://cdn.test/upload/script/one.js'
+    two = 'https://cdn.test/upload/script/two.js'
+    raw = f'<script src="{one}"></script><script src="{two}"></script>'
+    scripts = {one: 'document.write("one")', two: 'document.write(dynamic())'}
+    monkeypatch.setattr(documents, 'fetch_text', lambda url: raw if url == page else pytest.fail(url))
+    monkeypatch.setattr(documents, 'fetch_content_script_text', lambda url, parent_url: (scripts[url], False))
+    public_dns(monkeypatch)
+    with policy.target_policy({'url': page}):
+        _name, found = documents.discover_static_documents(page)
+    assert not [item for item in found if item.kind == 'rendered_script_page']
