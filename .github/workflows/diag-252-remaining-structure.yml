@@ -1,0 +1,113 @@
+name: Diagnose remaining 252 structure
+
+on:
+  push:
+    branches:
+      - diag/252-remaining-structure-20260909
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      PYTHONUTF8: '1'
+      SHUZI_BROWSER_CONCURRENCY: '2'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: diag/252-remaining-structure-20260909
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Diagnose source documents
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json, re
+          from pathlib import Path
+          import crawler
+          from kill_numbers.acquisition.policy import target_policy
+          from kill_numbers.acquisition.documents import parseable_documents
+          from kill_numbers.parsing.source_scope import source_type_family, source_type_allowed, target_for_document
+          from kill_numbers.parsing.registry import parse_target_content, available_issues_from_content
+          from kill_numbers.parsing.common import find_anchor_positions
+          from kill_numbers.text_utils import as_list, html_to_text, normalize_keyword
+
+          names = [
+            '平特网心水杀十码','门潭赠庆杀十码','悼心失图','凤舞九天','白虎玄机','当家做主','文武双全','广西三八',
+            '宽大为怀','接二连三','雨锁蓝心','来轸方遒','雨过天晴','山水相逢','摇钱树','马经论坛',
+            '无庸赘述','天公作美','一点朱砂','此发彼应','易洗鲨鱼','门主立邦','小时了了','百里挑一',
+            '聚宝十二','聚宝十','人在江湖','人非土木','片羽吉光',
+            '博彩兵书','寿比南山','弦无虚发','迎着尾王','过眼云烟','春蚓秋蛇','实至名归',
+            '湖心小筑','六合绝杀十码','新竹论坛','醉八仙','师太','不可或缺','横财富','安身立命','一诺千金'
+          ]
+          targets={t['name']:t for t in crawler.load_targets()}
+          result=[]
+          for name in names:
+            target=targets.get(name)
+            item={'name':name,'target':target,'fetch_error':'','documents':[],'merged_parse':None,'merged_error':''}
+            if not target:
+              item['fetch_error']='target missing'; result.append(item); continue
+            try:
+              with target_policy(target,['252']):
+                auto, docs=crawler.fetch_target_documents(target,['252'])
+              item['auto_name']=auto
+            except Exception as exc:
+              item['fetch_error']=f'{type(exc).__name__}: {exc}'; result.append(item); continue
+            try:
+              parsed=crawler.parse_target_document_results(docs,target,['252'])
+              item['merged_parse']=parsed.issue_map
+              item['merged_sources']={k:v.kind for k,v in parsed.source_documents.items()}
+            except Exception as exc:
+              item['merged_error']=f'{type(exc).__name__}: {exc}'
+            for doc in sorted(parseable_documents(docs),key=lambda d:d.priority,reverse=True):
+              text=html_to_text(doc.content)
+              d={'kind':doc.kind,'family':source_type_family(doc),'allowed':source_type_allowed(target,doc),'priority':doc.priority,
+                 'url':doc.url,'chars':len(doc.content),'text_chars':len(text),'metadata':doc.metadata}
+              anchors=as_list(target.get('anchor')); stops=as_list(target.get('stop_anchor'))
+              d['anchor_positions']={a:find_anchor_positions(text,a)[:20] for a in anchors}
+              d['stop_positions']={s:find_anchor_positions(text,s)[:20] for s in stops}
+              cls=str(target.get('content_class') or '')
+              if cls:
+                d['content_class']=cls
+                d['class_open_count']=len(re.findall(r'<[A-Za-z][^>]*\bclass=["\'][^"\']*(?:^|\s)'+re.escape(cls)+r'(?:\s|$)[^"\']*["\'][^>]*>',doc.content,re.I))
+                d['class_literal_count']=doc.content.count(cls)
+              d['nav_counts']={key:normalize_keyword(text).count(normalize_keyword(key)) for key in ['上一篇','下一篇','上一篇:','上一篇：','下一篇:','下一篇：','下一贴','下一贴:','下一贴：','重要通知','绝杀三尾','银海芬姐','珠联璧合（三肖四码）']}
+              d['issue252_count']=len(re.findall(r'(?<!\d)0?252\s*期(?!\d)',text))
+              snippets=[]
+              probes=['252期',*anchors,*stops,'上一篇','下一篇','下一贴']
+              seen=set()
+              for probe in probes:
+                if not probe: continue
+                norm=normalize_keyword(probe)
+                for m in re.finditer(r'.{0,240}'+re.escape(probe)+r'.{0,500}',text,re.S):
+                  val=' '.join(m.group(0).split())
+                  key=val[:200]
+                  if key not in seen:
+                    seen.add(key); snippets.append({'probe':probe,'text':val[:900]})
+                  if len(snippets)>=10: break
+                if len(snippets)>=10: break
+              d['snippets']=snippets
+              try:
+                eff=target_for_document(target,doc)
+                d['parse']=parse_target_content(doc.content,eff,['252'])
+              except Exception as exc:
+                d['parse_error']=f'{type(exc).__name__}: {exc}'
+              try:
+                eff=target_for_document(target,doc)
+                d['available']=available_issues_from_content(doc.content,eff)[:20]
+              except Exception as exc:
+                d['available_error']=f'{type(exc).__name__}: {exc}'
+              item['documents'].append(d)
+            result.append(item)
+            print(name, 'docs',[(d['kind'],d['allowed'],d.get('issue252_count'),d.get('parse'),d.get('parse_error','')) for d in item['documents'][:5]], 'merged',item['merged_parse'],item['merged_error'])
+          Path('/tmp/diag252.json').write_text(json.dumps(result,ensure_ascii=False,indent=2),encoding='utf-8')
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: diag-252-remaining-structure
+          path: /tmp/diag252.json
+          retention-days: 2
