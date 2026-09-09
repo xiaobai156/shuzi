@@ -1,0 +1,66 @@
+name: Diagnose 252 content script fetch
+
+on:
+  push:
+    branches:
+      - diag/252-script-fetch-20260909
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: diag/252-script-fetch-20260909
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Probe content CDN scripts
+        shell: bash
+        run: |
+          set +e
+          probe() {
+            page="$1"
+            url="$2"
+            echo "===== $url ====="
+            echo "DNS:"
+            getent ahosts "$(python -c 'import sys,urllib.parse;print(urllib.parse.urlsplit(sys.argv[1]).hostname)' "$url")" | head -5
+            echo "-- curl direct --"
+            curl -sS --max-time 15 -D /tmp/h1 -o /tmp/b1 "$url"
+            echo "exit=$? bytes=$(wc -c </tmp/b1 2>/dev/null || echo 0)"
+            sed -n '1,20p' /tmp/h1
+            head -c 240 /tmp/b1 | tr '\n' ' '; echo
+            echo "-- curl referer+follow --"
+            curl -sS -L --max-time 20 -A 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/140 Safari/537.36' -e "$page" -D /tmp/h2 -o /tmp/b2 "$url"
+            echo "exit=$? bytes=$(wc -c </tmp/b2 2>/dev/null || echo 0)"
+            sed -n '1,40p' /tmp/h2
+            head -c 240 /tmp/b2 | tr '\n' ' '; echo
+          }
+          probe 'https://avfzesda.v3g7d-e00td-idgbab.xyz:16677/topic/472398.html' 'https://xia01.cosds.aohjifv.com/upload/script/09/13d67982e4111710.js'
+          probe 'https://hpktfgx.p4pj0-e5ads-inqsvz.xyz:16677/topic/465488.html' 'https://xia01.cosds.aohjifv.com/upload/script/09/a9aea095a9b2341c.js'
+          probe 'https://jjlachsn.4fk3e-i2rpf-vgknlh.work:16677/topic/649643.html' 'https://xia02.cosds.aohjifv.com/upload/script/09/10a1de5285e2f2fe.js'
+          true
+      - name: Probe project fetcher and print exact exceptions
+        shell: bash
+        run: |
+          python - <<'PY'
+          from kill_numbers.acquisition.http_client import fetch_text
+          from kill_numbers.acquisition.policy import target_policy
+          samples=[
+            ('https://avfzesda.v3g7d-e00td-idgbab.xyz:16677/topic/472398.html','https://xia01.cosds.aohjifv.com/upload/script/09/13d67982e4111710.js'),
+            ('https://hpktfgx.p4pj0-e5ads-inqsvz.xyz:16677/topic/465488.html','https://xia01.cosds.aohjifv.com/upload/script/09/a9aea095a9b2341c.js'),
+            ('https://jjlachsn.4fk3e-i2rpf-vgknlh.work:16677/topic/649643.html','https://xia02.cosds.aohjifv.com/upload/script/09/10a1de5285e2f2fe.js'),
+          ]
+          for page,url in samples:
+              print('====',url)
+              with target_policy({'url':page,'allowed_resource_hosts':[url.split('/')[2]]}):
+                  try:
+                      value=fetch_text(url)
+                      print('OK chars',len(value),'prefix',repr(value[:240]))
+                  except Exception as exc:
+                      print('ERROR',type(exc).__name__,repr(str(exc)))
+          PY
