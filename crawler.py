@@ -691,10 +691,14 @@ def _zuojianzifu_issue_links(target: dict) -> tuple[list[str], dict[str, str]]:
     return ordered, links
 
 
-def _ttss_issue_links(
-    target: dict,
-    requested_issues: list[str] | None = None,
-) -> tuple[list[str], dict[str, str]]:
+def _ttss_current_identity_article(target: dict) -> tuple[str, str]:
+    """Resolve the newest identity article, then let the article own period history.
+
+    TTSS reuses one article for multiple periods and updates the listing label to
+    the newest period.  Therefore the list is an identity locator, not a period
+    archive.  We still keep the configured pagination cap as a hard contract and
+    reject duplicate URLs for the same top identity row.
+    """
     page_limit = target.get("pagination_limit")
     if isinstance(page_limit, bool) or not isinstance(page_limit, int) or page_limit <= 0:
         raise SourceContractError(f"分页上限无效：{page_limit}")
@@ -705,12 +709,12 @@ def _ttss_issue_links(
         if str(keyword).strip()
     ]
     if not next_text or not link_keywords:
-        raise SourceContractError("分页身份文章历史探测缺少 next_text 或 link_keywords")
+        raise SourceContractError("分页身份文章探测缺少 next_text 或 link_keywords")
+    if normalize_region(target.get("region")) != "top":
+        raise SourceContractError("分页身份文章当前定位只支持 top")
 
     current_url = remove_fragment(str(target["url"]))
     visited_urls: set[str] = set()
-    ordered: list[str] = []
-    links_by_issue: dict[str, str] = {}
     for page_number in range(1, page_limit + 1):
         if current_url in visited_urls:
             raise SourceContractError(f"分页链接循环：{current_url}")
@@ -720,16 +724,9 @@ def _ttss_issue_links(
             documents,
             link_keywords=link_keywords,
         )
-        for issue in page_issues:
-            link = page_links[issue]
-            previous = links_by_issue.get(issue)
-            if previous and previous != link:
-                raise CandidateConflictError(
-                    f"{issue}期专属链接候选冲突（跨分页）：{previous} | {link}"
-                )
-            links_by_issue[issue] = link
-            if issue not in ordered:
-                ordered.append(issue)
+        if page_issues:
+            current_issue = page_issues[0]
+            return current_issue, page_links[current_issue]
 
         next_candidates: list[str] = []
         for document in parseable_documents(documents):
@@ -748,39 +745,35 @@ def _ttss_issue_links(
         next_url = remove_fragment(urljoin(current_url, distinct_next[0]))
         if next_url == current_url:
             break
-        if page_number == page_limit:
-            requested = {
-                normalize_issue(issue)
-                for issue in (requested_issues or [])
-                if normalize_issue(issue)
-            }
-            if requested and requested.issubset(links_by_issue):
-                # The requested identity rows were already found within the
-                # configured scan budget.  Later pages can only add older rows,
-                # so they cannot move an already-seen row out of the top window.
-                # Keep the hard page cap for discovery/history calls where no
-                # concrete requested issue proves that the current result is in
-                # scope.
-                break
-            raise SourceContractError(f"分页超过配置上限 {page_limit}")
         current_url = next_url
 
-    if not ordered:
-        raise NoCandidateError("分页身份文章列表没有找到任何专属期号链接")
-    return ordered, links_by_issue
-
+    raise NoCandidateError(
+        f"分页上限 {page_limit} 内没有找到当前身份文章"
+    )
 
 def _acquisition_issue_links(target: dict) -> tuple[list[str], dict[str, str]]:
     parser_name = str(target.get("special_parser") or "")
     if parser_name == "zuojianzifu_link_chain":
         return _zuojianzifu_issue_links(target)
-    if parser_name == "ttss_paginated_identity_top_10":
-        return _ttss_issue_links(target)
     raise SourceContractError(f"不支持的采集专属历史探测器：{parser_name}")
 
 
 def available_issues_for_acquisition_target(target: dict) -> list[str]:
-    """Discover only the configured directional window of acquisition-only listings."""
+    """Discover the strict current/history window for acquisition-only targets."""
+    parser_name = str(target.get("special_parser") or "")
+    if parser_name == "ttss_paginated_identity_top_10":
+        _listing_issue, article_url = _ttss_current_identity_article(target)
+        _article_name, documents = discover_static_documents(article_url)
+        article_target = dict(target)
+        article_target["special_parser"] = "identity_article_top_10"
+        available, _selected = available_issues_for_documents(
+            documents,
+            article_target,
+        )
+        if not available:
+            raise NoCandidateError("当前身份文章没有找到合法期号数据")
+        return available
+
     ordered, _links = _acquisition_issue_links(target)
     return _directional_acquisition_issues(ordered, target)
 
@@ -838,50 +831,35 @@ def crawl_ttss_paginated_identity_top_10(
     if not issues:
         raise ValueError("没有指定期数")
     requested = unique_keep_order(normalize_issue(issue) for issue in issues)
-    ordered, links = _ttss_issue_links(target, requested)
-    allowed = set(_directional_acquisition_issues(ordered, target))
-    outside = [issue for issue in requested if issue not in allowed]
-    if outside:
+
+    _listing_issue, article_url = _ttss_current_identity_article(target)
+    article_name, documents = discover_static_documents(article_url)
+    article_target = dict(target)
+    article_target["special_parser"] = "identity_article_top_10"
+    found, selected_document = parse_target_documents(
+        documents,
+        article_target,
+        requested,
+    )
+    missing = [issue for issue in requested if issue not in found]
+    if missing:
         raise NoCandidateError(
-            "指定期数不在分页身份文章配置方向窗口内："
-            + ",".join(f"{issue}期" for issue in outside)
+            "指定期数不在当前身份文章配置顶部窗口内："
+            + ",".join(f"{issue}期" for issue in missing)
         )
+    if selected_document is None:
+        raise ValueError("当前身份文章缺少来源文档证据")
 
-    article_names: list[str] = []
-    article_documents: list[SourceDocument] = []
-    article_documents_by_issue: dict[str, SourceDocument] = {}
-    issue_map: dict[str, list[str]] = {}
-    documents_by_url: dict[str, tuple[str, list[SourceDocument]]] = {}
-    for requested_issue in requested:
-        article_url = links[requested_issue]
-        if article_url not in documents_by_url:
-            documents_by_url[article_url] = discover_static_documents(article_url)
-        article_name, documents = documents_by_url[article_url]
-        article_target = dict(target)
-        article_target["special_parser"] = "identity_article_top_10"
-        found, selected_document = parse_target_documents(
-            documents,
-            article_target,
-            [requested_issue],
-        )
-        if requested_issue not in found:
-            raise ValueError(
-                f"{requested_issue}期专属文章没有找到符合配置的顶部号码"
-            )
-        if selected_document is None:
-            raise ValueError(f"{requested_issue}期专属文章缺少来源文档证据")
-        issue_map[requested_issue] = found[requested_issue]
-        article_names.append(article_name)
-        article_documents.append(selected_document)
-        article_documents_by_issue[requested_issue] = selected_document
-
+    issue_map = {issue: found[issue] for issue in requested}
+    article_documents_by_issue = {
+        issue: selected_document for issue in requested
+    }
     return (
-        article_names[0],
-        document_debug_text(article_documents),
+        article_name,
+        document_debug_text([selected_document]),
         issue_map,
         article_documents_by_issue,
     )
-
 
 def admin_content_matches_target(content: str, target: dict | None, issues: list[str] | None) -> bool:
     if not target or not issues:

@@ -138,7 +138,7 @@ def test_ttss_page_limit_still_fails_when_requested_issue_not_found(monkeypatch)
     monkeypatch.setattr(crawler, "discover_static_documents", lambda url: ("测试", pages[url]))
     _results, failure = crawler.crawl_one(target, ["252"])
     assert failure is not None
-    assert "分页超过配置上限 2" in failure.reason
+    assert "分页上限 2 内没有找到当前身份文章" in failure.reason
 
 
 def test_empty_source_anchor_uses_unique_url_scoped_document_identity():
