@@ -30,6 +30,30 @@ class DomBoundaryTests(unittest.TestCase):
             with self.subTest(html=html), self.assertRaises(ValueError):
                 parse_target_content(html, self.target, ['252'])
 
+    def test_repeated_identity_inside_unique_container_does_not_make_scope_ambiguous(self):
+        html = (
+            '作者甲<div class="topic-content">'
+            + self.row +
+            '<p>251期杀三码【04.05.06】作者甲</p>'
+            '<p>作者甲</p></div>'
+        )
+        self.assertEqual(
+            parse_target_content(html, self.target, ['252']),
+            {'252':['01','02','03']},
+        )
+
+    def test_repeated_identity_before_unique_container_is_allowed(self):
+        html = '主题作者甲 作者甲<div class="topic-content">' + self.row + '</div>'
+        self.assertEqual(
+            parse_target_content(html, self.target, ['252']),
+            {'252':['01','02','03']},
+        )
+
+    def test_identity_only_inside_container_is_failure(self):
+        html = '<div class="topic-content"><p>作者甲</p>' + self.row + '</div>'
+        with self.assertRaises(ValueError):
+            parse_target_content(html, self.target, ['252'])
+
     def test_wrong_anchor_and_outside_window(self):
         with self.assertRaises(ValueError):
             parse_target_content('作者乙<div class="topic-content">'+self.row+'</div>',self.target,['252'])
