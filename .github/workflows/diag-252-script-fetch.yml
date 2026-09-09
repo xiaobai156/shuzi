@@ -19,48 +19,46 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-      - name: Probe content CDN scripts
+      - name: Probe invalid-chain content CDN with narrow insecure transport
         shell: bash
         run: |
           set +e
           probe() {
-            page="$1"
-            url="$2"
+            idx="$1"; page="$2"; url="$3"; host="$(python -c 'import sys,urllib.parse;print(urllib.parse.urlsplit(sys.argv[1]).hostname)' "$url")"
             echo "===== $url ====="
-            echo "DNS:"
-            getent ahosts "$(python -c 'import sys,urllib.parse;print(urllib.parse.urlsplit(sys.argv[1]).hostname)' "$url")" | head -5
-            echo "-- curl direct --"
-            curl -sS --max-time 15 -D /tmp/h1 -o /tmp/b1 "$url"
-            echo "exit=$? bytes=$(wc -c </tmp/b1 2>/dev/null || echo 0)"
-            sed -n '1,20p' /tmp/h1
-            head -c 240 /tmp/b1 | tr '\n' ' '; echo
-            echo "-- curl referer+follow --"
-            curl -sS -L --max-time 20 -A 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/140 Safari/537.36' -e "$page" -D /tmp/h2 -o /tmp/b2 "$url"
-            echo "exit=$? bytes=$(wc -c </tmp/b2 2>/dev/null || echo 0)"
-            sed -n '1,40p' /tmp/h2
-            head -c 240 /tmp/b2 | tr '\n' ' '; echo
+            echo "-- certificate --"
+            timeout 8 openssl s_client -connect "$host:443" -servername "$host" -showcerts </dev/null 2>/tmp/sslerr | grep -E 'subject=|issuer=|Verify return code' | head -20
+            cat /tmp/sslerr | tail -5
+            echo "-- curl verified --"
+            curl -sS -L --max-time 15 -A 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/140 Safari/537.36' -e "$page" -D "/tmp/h${idx}v" -o "/tmp/b${idx}v" "$url"
+            echo "verified_exit=$? bytes=$(wc -c </tmp/b${idx}v 2>/dev/null || echo 0)"
+            echo "-- curl exact URL, insecure chain only --"
+            curl -k -sS -L --max-time 20 -A 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/140 Safari/537.36' -e "$page" -D "/tmp/h${idx}" -o "/tmp/b${idx}" "$url"
+            echo "insecure_exit=$? bytes=$(wc -c </tmp/b${idx} 2>/dev/null || echo 0)"
+            sed -n '1,30p' "/tmp/h${idx}"
+            head -c 300 "/tmp/b${idx}" | tr '\n' ' '; echo
           }
-          probe 'https://avfzesda.v3g7d-e00td-idgbab.xyz:16677/topic/472398.html' 'https://xia01.cosds.aohjifv.com/upload/script/09/13d67982e4111710.js'
-          probe 'https://hpktfgx.p4pj0-e5ads-inqsvz.xyz:16677/topic/465488.html' 'https://xia01.cosds.aohjifv.com/upload/script/09/a9aea095a9b2341c.js'
-          probe 'https://jjlachsn.4fk3e-i2rpf-vgknlh.work:16677/topic/649643.html' 'https://xia02.cosds.aohjifv.com/upload/script/09/10a1de5285e2f2fe.js'
+          probe 1 'https://avfzesda.v3g7d-e00td-idgbab.xyz:16677/topic/472398.html' 'https://xia01.cosds.aohjifv.com/upload/script/09/13d67982e4111710.js'
+          probe 2 'https://hpktfgx.p4pj0-e5ads-inqsvz.xyz:16677/topic/465488.html' 'https://xia01.cosds.aohjifv.com/upload/script/09/a9aea095a9b2341c.js'
+          probe 3 'https://jjlachsn.4fk3e-i2rpf-vgknlh.work:16677/topic/649643.html' 'https://xia02.cosds.aohjifv.com/upload/script/09/10a1de5285e2f2fe.js'
           true
-      - name: Probe project fetcher and print exact exceptions
+      - name: Decode insecurely retrieved script bodies and inspect exact signals
         shell: bash
         run: |
           python - <<'PY'
-          from kill_numbers.acquisition.http_client import fetch_text
-          from kill_numbers.acquisition.policy import target_policy
+          from pathlib import Path
+          from kill_numbers.acquisition.discovery import decode_strdecode_payloads
           samples=[
-            ('https://avfzesda.v3g7d-e00td-idgbab.xyz:16677/topic/472398.html','https://xia01.cosds.aohjifv.com/upload/script/09/13d67982e4111710.js'),
-            ('https://hpktfgx.p4pj0-e5ads-inqsvz.xyz:16677/topic/465488.html','https://xia01.cosds.aohjifv.com/upload/script/09/a9aea095a9b2341c.js'),
-            ('https://jjlachsn.4fk3e-i2rpf-vgknlh.work:16677/topic/649643.html','https://xia02.cosds.aohjifv.com/upload/script/09/10a1de5285e2f2fe.js'),
+            (1,'天公作美 发表于',['绝杀10码','绝杀十码']),
+            (2,'文武双全 发表于',['绝杀10码','绝杀十码']),
+            (3,'作者:历历在目',['杀10码','杀十码']),
           ]
-          for page,url in samples:
-              print('====',url)
-              with target_policy({'url':page,'allowed_resource_hosts':[url.split('/')[2]]}):
-                  try:
-                      value=fetch_text(url)
-                      print('OK chars',len(value),'prefix',repr(value[:240]))
-                  except Exception as exc:
-                      print('ERROR',type(exc).__name__,repr(str(exc)))
+          for idx,anchor,keywords in samples:
+              raw=Path(f'/tmp/b{idx}').read_text(encoding='utf-8',errors='replace') if Path(f'/tmp/b{idx}').exists() else ''
+              decoded=decode_strdecode_payloads(raw)
+              corpus='\n'.join([raw,*decoded])
+              print('==== SAMPLE',idx,'raw_chars',len(raw),'decoded_parts',len(decoded))
+              print('anchor?',anchor in corpus,'252?',('252期' in corpus or '0252期' in corpus),'keywords?',[(k,k in corpus) for k in keywords])
+              for part_no,value in enumerate(decoded[:5],1):
+                  print('decoded',part_no,'chars',len(value),'prefix',repr(value[:400]))
           PY
