@@ -1,0 +1,113 @@
+name: Verify final29 repairs
+
+on:
+  push:
+    branches:
+      - fix/final-29-20260909
+
+permissions:
+  contents: write
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      PYTHONUTF8: '1'
+      SHUZI_RESULTS_DIR: /tmp/shuzi-results
+      SHUZI_BROWSER_CONCURRENCY: '2'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/final-29-20260909
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Apply reviewed repair patch
+        run: |
+          base64 -d .github/final29/fix.patch.xz.b64 | xz -dc > /tmp/final29.patch
+          git apply --check /tmp/final29.patch
+          git apply /tmp/final29.patch
+          git diff --check
+
+      - name: Install test dependencies
+        run: python -m pip install -r requirements-test.txt
+
+      - name: Compile
+        run: python -m compileall -q crawler.py check_duplicates.py retry_failed.py run_crawler_multi_prompt.py kill_numbers tests
+
+      - name: Full regression suite
+        run: python -m pytest -q --junitxml=pytest-results.xml
+
+      - name: Install real Chromium
+        run: |
+          python -m pip install playwright
+          python -m playwright install --with-deps chromium
+
+      - name: Real Chromium smoke tests
+        env:
+          RUN_BROWSER_SMOKE: '1'
+        run: python -m pytest -q tests/test_browser_smoke.py --junitxml=browser-results.xml
+
+      - name: Live 252 crawl
+        shell: bash
+        run: |
+          mkdir -p "$SHUZI_RESULTS_DIR"
+          set +e
+          python crawler.py --issues 252 --workers 16 --no-cache-update
+          code=$?
+          set -e
+          echo "CRAWL_EXIT=$code" >> "$GITHUB_ENV"
+
+      - name: Verify repaired live targets and summarize
+        shell: bash
+        run: |
+          python - <<'PY'
+          import os
+          from pathlib import Path
+          root = Path(os.environ['SHUZI_RESULTS_DIR'])
+          success = root / '252期-杀数字-成功.txt'
+          failure = root / '252期-杀数字-失败.txt'
+          success_text = success.read_text(encoding='utf-8-sig', errors='replace') if success.exists() else ''
+          failure_text = failure.read_text(encoding='utf-8-sig', errors='replace') if failure.exists() else ''
+          required = ['不可或缺', '横财富', '马经论坛', '告别那时', '私房一肖']
+          missing = [name for name in required if name not in success_text]
+          still_failed = [name for name in required if name in failure_text]
+          success_count = sum(1 for x in success_text.splitlines() if x.strip())
+          failure_count = sum(1 for x in failure_text.splitlines() if x.strip())
+          print(f'LIVE252_SUCCESS={success_count}')
+          print(f'LIVE252_FAILURE={failure_count}')
+          print(f'LIVE252_EXIT={os.environ.get("CRAWL_EXIT")}')
+          print('REPAIRED_TARGETS=' + ','.join(required))
+          if missing or still_failed:
+              raise SystemExit(f'定向修复未通过实时验证：missing={missing}, still_failed={still_failed}')
+          PY
+
+      - name: Publish verified repair branch commit
+        run: |
+          git checkout -- browser-results.xml || true
+          rm -f pytest-results.xml
+          rm -rf debug_pages
+          rm -rf .github/final29
+          rm -f .github/workflows/export-final29.yml .github/workflows/diag-final29.yml .github/workflows/verify-final29.yml
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          git diff --cached --check
+          git commit -m 'fix: repair verified final 252 sources'
+          git push origin HEAD:fix/final-29-20260909
+
+      - name: Upload verification evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: final29-repair-evidence
+          path: |
+            pytest-results.xml
+            browser-results.xml
+            /tmp/shuzi-results
+          if-no-files-found: warn
+          retention-days: 7
