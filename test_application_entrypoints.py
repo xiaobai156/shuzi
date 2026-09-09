@@ -77,3 +77,13 @@ def test_failed_site_parallel_validation_uses_shared_ordered_batch(monkeypatch):
 
     assert calls == {"workers": 2, "names": ["一", "二"]}
     assert [validation.name for validation in validations] == ["一", "二"]
+
+
+def test_duplicate_bat_uses_per_site_latest_periods():
+    content = (
+        crawler.SCRIPT_DIR / "爬虫-每天杀数字 - 检测重复.bat"
+    ).read_text(encoding="utf-8")
+
+    assert "--latest" not in content
+    assert "check_duplicates.py --recent 10" in content
+    assert "--write-cache" in content
