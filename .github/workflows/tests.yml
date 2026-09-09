@@ -1,0 +1,38 @@
+name: Regression tests
+
+on:
+  push:
+    branches: [main, 'fix/accuracy-review-20260909']
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install test dependencies
+        run: python -m pip install pytest
+      - name: Save reviewed source snapshot
+        run: git archive --format=zip HEAD -o source.zip
+      - name: Compile
+        run: python -m compileall -q crawler.py check_duplicates.py kill_numbers
+      - name: Test
+        run: python -m pytest -q --junitxml=pytest-results.xml
+      - name: Upload test evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: regression-evidence
+          path: |
+            source.zip
+            pytest-results.xml
+          retention-days: 7
