@@ -14,7 +14,7 @@ jobs:
     timeout-minutes: 40
     env:
       PYTHONUTF8: '1'
-      SHUZI_RESULTS_DIR: ${{ runner.temp }}/shuzi-results
+      SHUZI_RESULTS_DIR: /tmp/shuzi-results
       SHUZI_BROWSER_CONCURRENCY: '2'
     steps:
       - name: Checkout exact branch
@@ -50,20 +50,16 @@ jobs:
           import json, os, re
           from pathlib import Path
           import crawler
-
           root = Path(os.environ['SHUZI_RESULTS_DIR'])
           success = root / '252期-杀数字-成功.txt'
           failure = root / '252期-杀数字-失败.txt'
-
           success_rows = []
           if success.is_file():
               for line in success.read_text(encoding='utf-8-sig', errors='replace').splitlines():
                   line = line.strip()
-                  if not line:
-                      continue
-                  parts = line.split(maxsplit=1)
-                  success_rows.append({'line': line, 'name': parts[1].strip() if len(parts) == 2 else ''})
-
+                  if line:
+                      parts = line.split(maxsplit=1)
+                      success_rows.append({'line': line, 'name': parts[1].strip() if len(parts) == 2 else ''})
           pattern = re.compile(r'^(?:\[[^]]+\]\s+)?(?P<name>.+?)\s+(?:(?P<region>top|bottom)\s+)?(?P<url>https?://\S+)\s+(?P<reason>.*)$')
           failure_rows = []
           if failure.is_file():
@@ -71,18 +67,14 @@ jobs:
                   match = pattern.match(line.strip())
                   if match:
                       failure_rows.append(match.groupdict())
-
-          active = crawler.load_targets()
           summary = {
               'issue': '252',
-              'active_targets': len(active),
+              'active_targets': len(crawler.load_targets()),
               'success_count': len(success_rows),
               'success_unique_names': len({row['name'] for row in success_rows}),
               'failure_count': len(failure_rows),
               'failure_unique_sites': len({(row['name'], row['url']) for row in failure_rows}),
               'crawler_exit_code': int(os.environ.get('CRAWL_EXIT', '-1')),
-              'success_file': str(success),
-              'failure_file': str(failure),
               'failures': failure_rows,
           }
           (root / 'live-252-summary.json').write_text(json.dumps(summary, ensure_ascii=False, indent=2), encoding='utf-8')
@@ -92,13 +84,13 @@ jobs:
           print('LIVE252_EXIT=' + str(summary['crawler_exit_code']))
           print('--- FAILURE SITES ---')
           for row in failure_rows:
-              print(f"{row['name']}\t{row['url']}\t{row['reason']}")
+              print(row['name'] + '\t' + row['url'] + '\t' + row['reason'])
           PY
 
       - name: Upload live result
         uses: actions/upload-artifact@v4
         with:
           name: live-252-result
-          path: ${{ runner.temp }}/shuzi-results
+          path: /tmp/shuzi-results
           if-no-files-found: warn
           retention-days: 1
