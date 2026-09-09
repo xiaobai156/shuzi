@@ -1,6 +1,10 @@
 import hashlib
 from contextvars import copy_context
-from kill_numbers.acquisition.policy import CURRENT_POLICY
+from kill_numbers.acquisition.policy import (
+    CURRENT_POLICY,
+    allow_discovered_child_host,
+    child_url_allowed,
+)
 import re
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
@@ -174,6 +178,9 @@ def discover_static_documents(url: str) -> tuple[str, list[SourceDocument]]:
 
     def fetch_child(kind_and_url: tuple[str, str]) -> tuple[str, str, str]:
         kind, child_url = kind_and_url
+        if kind == "script" and not child_url_allowed(child_url, page_url):
+            with allow_discovered_child_host(child_url):
+                return kind, child_url, fetch_text(child_url)
         return kind, child_url, fetch_text(child_url)
 
     child_results: dict[tuple[str, str], str] = {}

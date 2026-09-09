@@ -1,5 +1,5 @@
 import base64
-from kill_numbers.acquisition.policy import child_url_allowed
+from kill_numbers.acquisition.policy import child_url_allowed, validate_public_request_url
 import html
 import re
 from urllib.parse import urljoin, urlparse
@@ -29,7 +29,21 @@ def decode_strdecode_payloads(value: str) -> list[str]:
 
 
 def is_fetchable_script(src: str, page_url: str) -> bool:
-    return child_url_allowed(src, page_url) and urlparse(src).hostname != "hm.baidu.com"
+    parsed = urlparse(src)
+    if parsed.hostname == "hm.baidu.com":
+        return False
+    if child_url_allowed(src, page_url):
+        return True
+    # These sites keep the actual post body in explicitly referenced CDN
+    # /upload/script/ files.  Permit only that narrow direct-script shape;
+    # arbitrary third-party libraries and XHR destinations remain blocked.
+    if "/upload/script/" not in parsed.path:
+        return False
+    try:
+        validate_public_request_url(src)
+        return True
+    except (OSError, ValueError):
+        return False
 
 
 def script_urls(html_value: str, page_url: str) -> list[str]:

@@ -30,12 +30,42 @@ def test_dns_private_address_is_rejected_before_transport(monkeypatch):
     with pytest.raises(ValueError,match='DNS'):policy.validate_request_url('https://a.test')
 
 
-def test_script_path_does_not_authorize_cross_origin():
-    assert not discovery.is_fetchable_script('https://evil.test/upload/script/x.js','https://a.test')
-    assert discovery.iframe_urls('<iframe src="https://evil.test/x"></iframe>','https://a.test')==[]
+def test_only_direct_public_upload_scripts_get_narrow_cross_origin_exception(monkeypatch):
+    monkeypatch.setattr(
+        discovery,
+        'validate_public_request_url',
+        lambda url: url if url.startswith('https://cdn.test/') else (_ for _ in ()).throw(ValueError('blocked')),
+    )
+    assert discovery.is_fetchable_script(
+        'https://cdn.test/upload/script/x.js', 'https://a.test'
+    )
+    assert not discovery.is_fetchable_script(
+        'https://cdn.test/static/jquery.js', 'https://a.test'
+    )
+    assert not discovery.is_fetchable_script(
+        'https://evil.test/upload/script/x.js', 'https://a.test'
+    )
+    assert discovery.iframe_urls(
+        '<iframe src="https://cdn.test/x"></iframe>', 'https://a.test'
+    ) == []
     with policy.target_policy({'url':'https://a.test','allowed_resource_hosts':['cdn.test']}):
-        assert discovery.is_fetchable_script('https://cdn.test/x.js','https://a.test')
-        assert not discovery.is_fetchable_script('https://cdn.test.evil.test/x.js','https://a.test')
+        assert discovery.is_fetchable_script('https://cdn.test/static/x.js','https://a.test')
+        assert not discovery.is_fetchable_script('https://cdn.test.evil.test/static/x.js','https://a.test')
+
+
+def test_discovered_child_host_scope_is_temporary(monkeypatch):
+    public_dns(monkeypatch)
+    with policy.target_policy({'url': 'https://a.test'}):
+        with pytest.raises(ValueError, match='跨域'):
+            policy.validate_request_url('https://cdn.test/upload/script/x.js', resolve=False)
+        with policy.allow_discovered_child_host('https://cdn.test/upload/script/x.js'):
+            assert policy.validate_request_url(
+                'https://cdn.test/upload/script/x.js', resolve=False
+            )
+            with pytest.raises(ValueError, match='跨域'):
+                policy.validate_request_url('https://other.test/x.js', resolve=False)
+        with pytest.raises(ValueError, match='跨域'):
+            policy.validate_request_url('https://cdn.test/upload/script/x.js', resolve=False)
 
 
 def test_default_tls_verified_and_insecure_setting_is_scoped():
