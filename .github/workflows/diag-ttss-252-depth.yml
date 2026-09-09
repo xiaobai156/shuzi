@@ -1,0 +1,64 @@
+name: Diagnose TTSS 252 depth
+
+on:
+  push:
+    branches:
+      - diag/ttss-252-depth-20260910
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      PYTHONUTF8: '1'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: diag/ttss-252-depth-20260910
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Scan TTSS pages for 252
+        shell: bash
+        run: |
+          python - <<'PY'
+          import re
+          import crawler
+          from kill_numbers.acquisition.policy import target_policy
+          from kill_numbers.acquisition.strategies.linked_pages import topic_links
+          from kill_numbers.acquisition.documents import parseable_documents
+
+          targets = {t['name']: t for t in crawler.load_targets()}
+          for name in ['告别那时', '私房一肖']:
+              t = targets[name]
+              print(f'=== {name} ===')
+              found = []
+              for page in range(1, 31):
+                  url = re.sub(r'([?&]page=)\d+', rf'\g<1>{page}', t['url'])
+                  try:
+                      with target_policy(t, ['252']):
+                          _, docs = crawler.discover_static_documents(url)
+                      matches = []
+                      identity_rows = []
+                      for doc in parseable_documents(docs):
+                          for href, label in topic_links(doc.content):
+                              clean = ' '.join(label.split())
+                              if name in clean and ('绝杀10码' in clean or '绝杀十码' in clean):
+                                  identity_rows.append(clean)
+                                  if '252期' in clean:
+                                      matches.append((href, clean))
+                      print(f'PAGE={page} IDENTITY_ROWS={len(identity_rows)} MATCH252={len(matches)}')
+                      if matches:
+                          for href, label in matches:
+                              print(f'FOUND PAGE={page} HREF={href} LABEL={label}')
+                          found.extend((page, href, label) for href, label in matches)
+                          break
+                  except Exception as exc:
+                      print(f'PAGE={page} ERROR={type(exc).__name__}: {exc}')
+                      break
+              if not found:
+                  print('NOT_FOUND_WITHIN_30')
+          PY
