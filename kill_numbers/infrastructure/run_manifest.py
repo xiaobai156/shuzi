@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 from kill_numbers.infrastructure.file_store import atomic_write_json
 from kill_numbers.infrastructure.cache_repository import target_signature
-from kill_numbers.domain.periods import canonical_url, target_identity
+from kill_numbers.domain.periods import canonical_url, cycle_key, target_identity
 
 
 def file_digest(path):
@@ -14,13 +14,49 @@ def file_digest(path):
 
 def write_run_manifest(path, run_id, issue, results, failures, targets, success_file, failed_file):
     by_ref = {(t['name'], canonical_url(t['url'])): t for t in targets}
+    cycles = {
+        cycle_key(target.get('cycle_id'))
+        for target in targets
+        if cycle_key(target.get('cycle_id'))
+    }
+    if len(cycles) > 1:
+        raise ValueError('一次单期运行不能混用多个 cycle_id')
+    cycle = next(iter(cycles), '')
     value = {
-        'version': 1, 'run_id': run_id, 'issue': str(issue), 'outputs_finalized': True,
-        'files': [{'path': str(Path(p).resolve()), 'sha256': file_digest(p)}
-                  for p in (success_file, failed_file)],
-        'results': [{'name': r.name, 'url': r.url, 'target_id': target_identity(by_ref[(r.name, canonical_url(r.url))]), 'contract_hash': target_signature(by_ref[(r.name, canonical_url(r.url))])}
-                    for r in results],
-        'failures': [{'name': f.name, 'url': f.url, 'reason': f.reason, 'target_id': target_identity(by_ref[(f.name, canonical_url(f.url))])} for f in failures],
+        'version': 1,
+        'run_id': run_id,
+        'issue': str(issue),
+        'cycle_id': cycle,
+        'outputs_finalized': True,
+        'files': [
+            {'path': str(Path(file_path).resolve()), 'sha256': file_digest(file_path)}
+            for file_path in (success_file, failed_file)
+        ],
+        'results': [
+            {
+                'name': result.name,
+                'url': result.url,
+                'cycle_id': cycle,
+                'target_id': target_identity(
+                    by_ref[(result.name, canonical_url(result.url))]
+                ),
+                'contract_hash': target_signature(
+                    by_ref[(result.name, canonical_url(result.url))]
+                ),
+            }
+            for result in results
+        ],
+        'failures': [
+            {
+                'name': failure.name,
+                'url': failure.url,
+                'reason': failure.reason,
+                'target_id': target_identity(
+                    by_ref[(failure.name, canonical_url(failure.url))]
+                ),
+            }
+            for failure in failures
+        ],
     }
     atomic_write_json(path, value)
     return value

@@ -16,9 +16,13 @@ from kill_numbers.parsing.common import (
 )
 from kill_numbers.parsing.diagnostics import detect_available_issues
 from kill_numbers.text_utils import html_to_text, normalize_issue, normalize_keyword
+from kill_numbers.domain.periods import previous_issue_for_target, rollover_seam_indices
 
 
 def _configured_candidate_window(target: dict, label: str) -> int:
+    _ = label
+    if target.get("_history_discovery") is True:
+        return resolve_candidate_window(target.get("_history_depth"))
     return resolve_candidate_window(target.get("issue_position_window"))
 
 
@@ -269,11 +273,10 @@ def extract_top_article_history_current_cycle_numbers(
         raise ValueError("专属栏目没有有效号码行")
 
     # The page has no DOM marker between the current and legacy cycles.
-    cycle_seams = [
-        index
-        for index in range(1, len(rows))
-        if rows[index - 1][0] == "365" and rows[index][0] == "1"
-    ]
+    cycle_seams = rollover_seam_indices(
+        [issue for issue, _numbers, _position in rows],
+        target,
+    )
     if len(cycle_seams) != 1:
         raise ValueError(f"周期文档边界数量异常：{len(cycle_seams)}")
 
@@ -686,7 +689,8 @@ def fengwu_jiutian_bottom_10_available_issues(text: str, target: dict) -> list[s
         keywords=target.get("keywords"),
         expected_count=10,
         region="bottom",
-        issue_position_window=3,
+        issue_position_window=_configured_candidate_window(target, "凤舞九天"),
+        history_depth=(target.get("_history_depth") if target.get("_history_discovery") is True else None),
     )
 
 
@@ -704,7 +708,7 @@ def extract_fengwu_jiutian_bottom_10_numbers(
         strict_ambiguous=True,
         allow_duplicate_numbers=False,
         region="bottom",
-        issue_position_window=3,
+        issue_position_window=_configured_candidate_window(target, "凤舞九天"),
     )
 
 
@@ -822,7 +826,7 @@ def normalize_identity_article_current_placeholder(
     if not title_match:
         raise ValueError("铭记于心没有找到接口当前期绝杀十码标题")
     current_issue = normalize_issue(title_match.group(1))
-    previous_issue = str(int(current_issue) - 1)
+    previous_issue = previous_issue_for_target(current_issue, target)
 
     placeholder_pattern = re.compile(
         r"(?m)^\s*水期(?=\s*[:：]\s*《\s*铭记于心\s*》"

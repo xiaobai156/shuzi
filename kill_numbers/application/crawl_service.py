@@ -8,7 +8,7 @@ from urllib.parse import urlparse
 from kill_numbers.acquisition.browser_pool import render_page_documents
 from kill_numbers.acquisition.documents import document_debug_text
 from kill_numbers.application.batch_service import iter_completed_batch
-from kill_numbers.domain.models import CrawlFailure, CrawlResult, SourceDocument
+from kill_numbers.domain.models import CrawlFailure, CrawlResult, SourceDocument, DocumentParseResult
 from kill_numbers.parsing.common import CANDIDATE_REGION_WINDOW, manual_risk_reason
 from kill_numbers.parsing.diagnostics import (
     detect_available_issues,
@@ -36,6 +36,10 @@ DocumentParser = Callable[
     [list[SourceDocument], dict, list[str]],
     tuple[dict[str, list[str]], SourceDocument | None],
 ]
+DocumentResultParser = Callable[
+    [list[SourceDocument], dict, list[str]],
+    DocumentParseResult,
+]
 LinkedPageCrawler = Callable[
     [dict, list[str]],
     tuple[str, str, dict[str, list[str]], dict[str, SourceDocument]],
@@ -54,6 +58,7 @@ class CrawlDependencies:
     contract_is_split_across_documents: SplitContractChecker
     save_debug_page: DebugWriter
     crawl_ttss_paginated_identity_top_10: LinkedPageCrawler | None = None
+    parse_target_document_results: DocumentResultParser | None = None
 
 
 @dataclass(frozen=True)
@@ -68,6 +73,26 @@ class CrawlBatchProgress:
     target: dict
     results: list[CrawlResult]
     failure: CrawlFailure | None
+
+
+def _parse_documents_with_provenance(
+    dependencies: CrawlDependencies,
+    documents: list[SourceDocument],
+    target: dict,
+    issues: list[str],
+) -> tuple[dict[str, list[str]], SourceDocument | None, dict[str, SourceDocument]]:
+    if dependencies.parse_target_document_results is not None:
+        parsed = dependencies.parse_target_document_results(documents, target, issues)
+        return parsed.issue_map, parsed.primary_document, dict(parsed.source_documents)
+    issue_map, selected = dependencies.parse_target_documents(documents, target, issues)
+    sources: dict[str, SourceDocument] = {}
+    for issue in issue_map or {}:
+        _single_map, single_document = dependencies.parse_target_documents(
+            documents, target, [issue]
+        )
+        if issue in _single_map and single_document is not None:
+            sources[issue] = single_document
+    return issue_map, selected, sources
 
 
 def run_crawl_target(
@@ -131,7 +156,8 @@ def _run_formal_crawl_target(
 
         name = configured_name if configured_name != "未命名" else auto_name
         if source_documents is not None:
-            issue_map, selected_document = dependencies.parse_target_documents(
+            issue_map, selected_document, selected_documents_by_issue = _parse_documents_with_provenance(
+                dependencies,
                 source_documents,
                 target,
                 issues,
@@ -152,7 +178,8 @@ def _run_formal_crawl_target(
                     browser_documents = []
                 if browser_documents:
                     source_documents.extend(browser_documents)
-                    issue_map, selected_document = dependencies.parse_target_documents(
+                    issue_map, selected_document, selected_documents_by_issue = _parse_documents_with_provenance(
+                        dependencies,
                         source_documents,
                         target,
                         issues,

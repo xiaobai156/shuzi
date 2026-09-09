@@ -3,6 +3,7 @@ from urllib.parse import urlparse
 import re
 
 from kill_numbers.text_utils import normalize_keyword
+from kill_numbers.parsing.errors import NoCandidateError
 
 
 def target_for_document(target, document):
@@ -10,7 +11,7 @@ def target_for_document(target, document):
     pattern = str(target.get("source_url_pattern") or "")
     if pattern:
         if not re.search(pattern, document.url, re.I):
-            raise ValueError("来源文档不符合专属 URL 契约")
+            raise NoCandidateError("来源文档不符合专属 URL 契约")
         if target.get("source_anchor"):
             value["anchor"] = target["source_anchor"]
     metadata = document.metadata
@@ -27,6 +28,12 @@ def target_for_document(target, document):
         value["anchor"] = ""
         value["_scope_kind"] = "source_identity"
         value["_source_identity"] = document.identity
-    if "allowed_row_starts" in metadata:
-        value["_allowed_row_starts"] = set(metadata["allowed_row_starts"])
+    allowed_key = "allowed_row_starts"
+    if (
+        value.get("_history_discovery") is not True
+        and "current_allowed_row_starts" in metadata
+    ):
+        allowed_key = "current_allowed_row_starts"
+    if allowed_key in metadata:
+        value["_allowed_row_starts"] = set(metadata[allowed_key])
     return value

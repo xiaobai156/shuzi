@@ -5,12 +5,25 @@ from kill_numbers.parsing import dedicated
 from kill_numbers.parsing.dom_scope import content_section
 from kill_numbers.parsing.dedicated import site_parsers as sites
 from kill_numbers.parsing.common import (
-    candidate_rows, find_anchor_index, html_to_text, normalize_issue,
-    normalize_region, scope_text_by_anchor_with_offset,
+    anchor_scope_candidates,
+    candidate_rows,
+    find_anchor_index,
+    html_to_text,
+    normalize_issue,
+    normalize_region,
+    scope_text_by_anchor_with_offset,
+    windowed_rows,
 )
+from kill_numbers.parsing.errors import AmbiguousSourceError, SourceContractError
+from kill_numbers.domain.periods import rollover_seam_indices
 
 
-def evidence_section(content: str, target: dict) -> tuple[str, str, int]:
+def evidence_section(
+    content: str,
+    target: dict,
+    issue: str | None = None,
+    numbers: list[str] | tuple[str, ...] | None = None,
+) -> tuple[str, str, int]:
     parser = target.get("special_parser", "")
     text = html_to_text(content)
     if target.get("content_class"):
@@ -28,6 +41,14 @@ def evidence_section(content: str, target: dict) -> tuple[str, str, int]:
         if not stop and parser != "shita_top_10":
             raise ValueError("来源证据缺少专属结束边界")
         section = text[headings[0].start():stop.start() if stop else len(text)]
+    elif parser == "identity_article_top_10":
+        # The dedicated parser validates the API/article identity. Repeated
+        # author text inside each data row is not a section boundary.
+        sites.identity_article_top_10_candidates(content, target)
+        section = text
+    elif parser == "identity_article_bottom_10":
+        sites.identity_article_bottom_10_candidates(content, target)
+        section = text
     elif parser == "huxin_xiaozhu_stable_10":
         section = sites.huxin_xiaozhu_stable_10_section(content, target)
     elif parser == "fengwu_jiutian_bottom_10":
@@ -68,7 +89,61 @@ def evidence_section(content: str, target: dict) -> tuple[str, str, int]:
             raise ValueError("来源证据缺少报码结构")
         section = html_to_text(content[matches[0].start():matches[-1].end()])
     if section is None:
-        section, start = scope_text_by_anchor_with_offset(text, target.get("anchor"), target.get("stop_anchor"))
+        scopes = anchor_scope_candidates(
+            text,
+            target.get("anchor"),
+            target.get("stop_anchor"),
+        )
+        if len(scopes) == 1:
+            section, start = scopes[0].text, scopes[0].start
+        elif issue is not None and numbers is not None:
+            expected = tuple(numbers)
+            matching = []
+            for scope in scopes:
+                rows = list(
+                    candidate_rows(
+                        scope.text,
+                        target.get("keywords"),
+                        target.get("count"),
+                        target.get("allow_duplicate_numbers", False),
+                    )
+                )
+                window = (
+                    target.get("_history_depth")
+                    if target.get("_history_discovery") is True
+                    else target.get("issue_position_window")
+                )
+                selected = windowed_rows(rows, target.get("region"), window)
+                if any(
+                    row.issue == normalize_issue(issue) and expected in row.groups
+                    for row in selected
+                ):
+                    signature = tuple(
+                        (row.issue, row.groups)
+                        for row in selected
+                    )
+                    matching.append((scope, signature))
+            if not matching:
+                raise SourceContractError(
+                    f"{normalize_issue(issue)}期在所有完整锚点区块中均缺少候选"
+                )
+            signatures = {signature for _scope, signature in matching}
+            if len(signatures) > 1:
+                raise AmbiguousSourceError(
+                    "多个完整锚点区块包含目标候选，但区块内容不一致"
+                )
+            chosen, _signature = min(
+                matching,
+                key=lambda item: (
+                    item[0].end - item[0].start,
+                    item[0].start,
+                ),
+            )
+            section, start = chosen.text, chosen.start
+        else:
+            raise AmbiguousSourceError(
+                f"正文锚点对应 {len(scopes)} 个完整区块，缺少候选信息无法判定"
+            )
     else:
         # Normalization can remove padding; a repeated identical section is
         # ambiguous provenance rather than a reason to choose its first copy.
@@ -79,8 +154,8 @@ def evidence_section(content: str, target: dict) -> tuple[str, str, int]:
     if parser == "top_article_history_current_cycle":
         rows = list(candidate_rows(section, target.get("keywords"), target.get("count"),
                                    target.get("allow_duplicate_numbers", False)))
-        seams = [rows[i].start for i in range(1, len(rows))
-                 if rows[i - 1].issue == "365" and rows[i].issue == "1"]
+        seam_indices = rollover_seam_indices([row.issue for row in rows], target)
+        seams = [rows[index].start for index in seam_indices]
         if len(seams) != 1:
             raise ValueError("来源证据周期边界不唯一")
         if normalize_region(target.get("region")) == "top":

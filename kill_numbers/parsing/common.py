@@ -11,6 +11,12 @@ from kill_numbers.text_utils import (
     normalize_keyword,
     unique_keep_order,
 )
+from kill_numbers.parsing.errors import (
+    AmbiguousSourceError,
+    CandidateConflictError,
+    NoCandidateError,
+    SourceContractError,
+)
 
 
 # Default only: an explicitly configured window is a business contract.
@@ -38,6 +44,16 @@ class CandidateRow:
     start: int
     end: int
     segment: str
+
+
+@dataclass(frozen=True)
+class AnchorScope:
+    """One complete configured anchor/stop block in a single document."""
+
+    anchor: str
+    start: int
+    end: int
+    text: str
 
 
 def candidate_rows(text, keywords=None, expected_count=None, allow_duplicate_numbers=False):
@@ -142,7 +158,7 @@ def find_dedicated_anchor_candidate(text: str, target: dict, issues: list[str]) 
             region=target.get("region"),
             issue_position_window=target.get("issue_position_window"),
         )
-    except Exception:
+    except NoCandidateError:
         return None
     if not base_found:
         return None
@@ -164,7 +180,7 @@ def find_dedicated_anchor_candidate(text: str, target: dict, issues: list[str]) 
                 region=target.get("region"),
                 issue_position_window=target.get("issue_position_window"),
             )
-        except Exception:
+        except NoCandidateError:
             continue
         if anchored_found and anchored_found == base_found:
             return anchor
@@ -238,7 +254,9 @@ def select_candidate(
     if strict_ambiguous:
         preview = " | ".join(",".join(numbers) for numbers, _ in distinct[:5])
         issue_text = f"{issue}期" if issue else "该期"
-        raise ValueError(f"{issue_text} 候选不唯一，已停止输出避免抓错：{preview}")
+        raise CandidateConflictError(
+            f"{issue_text} 候选不唯一，已停止输出避免抓错：{preview}"
+        )
 
     pending = [
         (numbers, segment)
@@ -298,6 +316,100 @@ def find_anchor_index(text: str, anchor: str, start: int = 0) -> int:
         offset += len(line)
     return -1
 
+
+def find_anchor_positions(text: str, anchor: str, start: int = 0) -> list[int]:
+    """Return every plausible section occurrence without choosing the first.
+
+    Short non-period lines are the strongest heading candidates.  When a site
+    places its heading and first period on one line, fall back to exact or
+    normalized line occurrences so the caller can compare all complete blocks.
+    """
+    if not anchor:
+        return []
+    normalized_anchor = normalize_keyword(anchor)
+    if not normalized_anchor:
+        return []
+
+    heading_positions: list[int] = []
+    normalized_line_positions: list[int] = []
+    offset = 0
+    for line in text.splitlines(keepends=True):
+        compact = normalize_keyword(line)
+        if offset >= start and normalized_anchor in compact:
+            normalized_line_positions.append(offset)
+            if not re.search(r"(?<!\d)0?\d{1,3}\s*期", line):
+                # Navigation mentions, recommendation headings and the actual
+                # section heading are all candidates.  The caller compares the
+                # complete scoped results instead of trusting the first match.
+                heading_positions.append(offset)
+        offset += len(line)
+    if heading_positions:
+        return list(dict.fromkeys(heading_positions))
+
+    exact_positions: list[int] = []
+    cursor = max(0, start)
+    while True:
+        position = text.find(anchor, cursor)
+        if position < 0:
+            break
+        exact_positions.append(position)
+        cursor = position + max(1, len(anchor))
+    if exact_positions:
+        return exact_positions
+    return list(dict.fromkeys(normalized_line_positions))
+
+
+def anchor_scope_candidates(
+    text: str,
+    anchors=None,
+    stop_anchors=None,
+) -> list[AnchorScope]:
+    """Return every complete configured anchor/stop block in one document.
+
+    Missing anchors mean the document is unrelated.  Once any configured start
+    anchor exists, a missing configured stop is a hard source-contract failure
+    unless another occurrence forms a complete block.  Alternative anchors are
+    all evaluated; no alias is allowed to hide a conflicting block.
+    """
+    anchor_list = as_list(anchors)
+    if not anchor_list:
+        return [AnchorScope("", 0, len(text), text)]
+
+    stops = as_list(stop_anchors)
+    scopes_by_bounds: dict[tuple[int, int], AnchorScope] = {}
+    saw_start = False
+    for anchor in anchor_list:
+        starts = find_anchor_positions(text, anchor)
+        if starts:
+            saw_start = True
+        for start_index in starts:
+            end_positions = [
+                find_anchor_index(
+                    text,
+                    stop,
+                    start=start_index + max(1, len(anchor)),
+                )
+                for stop in stops
+            ]
+            end_positions = [end for end in end_positions if end >= 0]
+            if stops and not end_positions:
+                continue
+            end_index = min(end_positions) if end_positions else len(text)
+            if end_index <= start_index:
+                continue
+            key = (start_index, end_index)
+            scopes_by_bounds.setdefault(
+                key,
+                AnchorScope(anchor, start_index, end_index, text[start_index:end_index]),
+            )
+
+    scopes = sorted(scopes_by_bounds.values(), key=lambda item: (item.start, item.end))
+    if scopes:
+        return scopes
+    if saw_start and stops:
+        raise SourceContractError(f"没有找到正文结束锚点：{stops}")
+    raise NoCandidateError(f"没有找到正文锚点：{anchor_list}")
+
 def find_last_anchor_index_before(text: str, anchor: str, end: int) -> int:
     direct = text.rfind(anchor, 0, end)
     if direct >= 0:
@@ -330,22 +442,12 @@ def scope_text_by_anchor_with_offset(
     anchors=None,
     stop_anchors=None,
 ) -> tuple[str, int]:
-    anchor_list = as_list(anchors)
-    start_index = 0 if not anchor_list else -1
-    for anchor in anchor_list:
-        start_index = find_anchor_index(text, anchor)
-        if start_index >= 0:
-            break
-    if start_index < 0:
-        raise ValueError(f"没有找到正文锚点：{anchor_list}")
-
-    stops = as_list(stop_anchors)
-    end_positions = [find_anchor_index(text, stop, start=start_index + 1) for stop in stops]
-    end_positions = [end for end in end_positions if end >= 0]
-    if stops and not end_positions:
-        raise ValueError(f"没有找到正文结束锚点：{stops}")
-    end_index = min(end_positions) if end_positions else len(text)
-    return text[start_index:end_index], start_index
+    scopes = anchor_scope_candidates(text, anchors, stop_anchors)
+    if len(scopes) != 1:
+        raise AmbiguousSourceError(
+            f"正文锚点对应 {len(scopes)} 个完整区块，调用方必须按候选内容判定唯一来源"
+        )
+    return scopes[0].text, scopes[0].start
 
 def normalize_region(region: str | None) -> str:
     value = normalize_keyword(region or "").lower()
@@ -406,26 +508,58 @@ def extract_issue_numbers(
     allowed_row_starts: set[int] | None = None,
 ) -> dict[str, list[str]]:
     full_text = html_to_text(text)
-    section, _offset = scope_text_by_anchor_with_offset(full_text, anchor, stop_anchor)
-    rows = list(candidate_rows(section, keywords, expected_count, allow_duplicate_numbers))
-    selected_rows = (
-        [row for row in rows if row.start in allowed_row_starts]
-        if allowed_row_starts is not None
-        else windowed_rows(rows, region, issue_position_window)
-    )
-    found = {}
-    for raw_issue in issues:
-        issue = normalize_issue(raw_issue)
-        candidates = [
-            (list(group), row.segment)
-            for row in selected_rows if row.issue == issue
-            for group in row.groups
-        ]
-        if candidates:
-            selected = select_candidate(
-                candidates, position=position, strict_ambiguous=True,
-                issue=issue, allow_duplicate_numbers=allow_duplicate_numbers,
+    scopes = anchor_scope_candidates(full_text, anchor, stop_anchor)
+    scope_results: list[tuple[AnchorScope, dict[str, list[str]]]] = []
+    for scope in scopes:
+        rows = list(
+            candidate_rows(
+                scope.text,
+                keywords,
+                expected_count,
+                allow_duplicate_numbers,
             )
-            if selected:
-                found[issue] = selected
+        )
+        selected_rows = (
+            [row for row in rows if row.start in allowed_row_starts]
+            if allowed_row_starts is not None
+            else windowed_rows(rows, region, issue_position_window)
+        )
+        found: dict[str, list[str]] = {}
+        for raw_issue in issues:
+            issue = normalize_issue(raw_issue)
+            candidates = [
+                (list(group), row.segment)
+                for row in selected_rows
+                if row.issue == issue
+                for group in row.groups
+            ]
+            if candidates:
+                selected = select_candidate(
+                    candidates,
+                    position=position,
+                    strict_ambiguous=True,
+                    issue=issue,
+                    allow_duplicate_numbers=allow_duplicate_numbers,
+                )
+                if selected:
+                    found[issue] = selected
+        if found:
+            scope_results.append((scope, found))
+
+    if not scope_results:
+        return {}
+    signatures = {
+        tuple((issue, tuple(numbers)) for issue, numbers in sorted(found.items()))
+        for _scope, found in scope_results
+    }
+    if len(signatures) > 1:
+        raise AmbiguousSourceError(
+            "正文锚点对应多个不同候选区块，已停止输出避免抓错"
+        )
+    # Identical results may appear in a navigation copy and the actual block.
+    # Prefer the tightest complete scope, then the earliest deterministic one.
+    _scope, found = min(
+        scope_results,
+        key=lambda item: (item[0].end - item[0].start, item[0].start),
+    )
     return found

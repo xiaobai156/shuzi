@@ -55,6 +55,15 @@ class SourceDocument:
 
 
 @dataclass(frozen=True)
+class DocumentParseResult:
+    """Merged issue results with one independently verified source per issue."""
+
+    issue_map: dict[str, list[str]]
+    source_documents: dict[str, "SourceDocument"]
+    primary_document: "SourceDocument | None" = None
+
+
+@dataclass(frozen=True)
 class CandidateEvidence:
     issue: str
     numbers: tuple[str, ...]

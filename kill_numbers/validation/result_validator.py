@@ -26,6 +26,12 @@ from kill_numbers.parsing.source_scope import target_for_document
 from kill_numbers.parsing.evidence_scope import evidence_section
 
 
+def _evidence_window_size(target: Mapping) -> int:
+    if target.get("_history_discovery") is True:
+        return resolve_candidate_window(target.get("_history_depth"))
+    return target_candidate_window(target)
+
+
 def _candidate_proof(target, issue, numbers, document):
     from kill_numbers.parsing.registry import parse_target_content
     if document.fingerprint != hashlib.sha256(document.content.encode("utf-8", errors="replace")).hexdigest():
@@ -42,7 +48,9 @@ def _candidate_proof(target, issue, numbers, document):
         found = parse_target_content(document.content, effective, [issue])
         if found.get(issue) != numbers:
             raise ValueError(f"{issue}期来源证据与专属解析/方向窗口不匹配")
-    text, section, offset = evidence_section(document.content, effective)
+    text, section, offset = evidence_section(
+        document.content, effective, issue=issue, numbers=numbers
+    )
     keywords = [] if parser == "macau_baoma" else effective.get("keywords")
     if effective.get("special_parser") == "identity_article_top_10":
         keywords = [effective["article_identity"]]
@@ -50,7 +58,7 @@ def _candidate_proof(target, issue, numbers, document):
                                effective.get("allow_duplicate_numbers", False)))
     allowed = effective.get("_allowed_row_starts")
     selected = ([row for row in rows if row.start in allowed] if allowed is not None
-                else windowed_rows(rows, effective.get("region"), effective.get("issue_position_window")))
+                else windowed_rows(rows, effective.get("region"), _evidence_window_size(effective)))
     locations = [(rank, row.start) for rank, row in enumerate(selected)
                  if row.issue == issue and tuple(numbers) in row.groups]
     if not locations and not effective.get("region") and not effective.get("special_parser"):
@@ -144,7 +152,7 @@ def evidence_from_source_document(
         scope_kind=effective.get("_scope_kind", "dedicated_parser" if effective.get("special_parser") else "text_anchor"),
         source_identity=effective.get("_source_identity", ""),
         region=normalize_region(target.get("region")),
-        window_size=target_candidate_window(target),
+        window_size=_evidence_window_size(target),
         row_rank=rank,
         parser_id=str(target.get("special_parser") or "generic"),
     )
@@ -176,7 +184,7 @@ def _validate_candidate_evidence(
     expected_region = normalize_region(target.get("region"))
     if expected_region and (
         evidence.region != expected_region
-        or evidence.window_size != target_candidate_window(target)
+        or evidence.window_size != _evidence_window_size(target)
         or not 0 <= evidence.row_rank < evidence.window_size
         or evidence.parser_id != str(target.get("special_parser") or "generic")
     ):
