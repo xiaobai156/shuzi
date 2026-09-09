@@ -1,0 +1,104 @@
+name: Live 252 crawl
+
+on:
+  push:
+    branches:
+      - run/252-live-20260909
+
+permissions:
+  contents: read
+
+jobs:
+  crawl:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    env:
+      PYTHONUTF8: '1'
+      SHUZI_RESULTS_DIR: ${{ runner.temp }}/shuzi-results
+      SHUZI_BROWSER_CONCURRENCY: '2'
+    steps:
+      - name: Checkout exact branch
+        uses: actions/checkout@v4
+        with:
+          ref: run/252-live-20260909
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install Chromium support
+        run: |
+          python -m pip install playwright
+          python -m playwright install --with-deps chromium
+
+      - name: Run live 252 crawl without cache updates
+        shell: bash
+        run: |
+          mkdir -p "$SHUZI_RESULTS_DIR"
+          set +e
+          python crawler.py --issues 252 --workers 16 --no-cache-update
+          code=$?
+          set -e
+          echo "CRAWL_EXIT=$code" >> "$GITHUB_ENV"
+          echo "crawler exit code: $code"
+
+      - name: Summarize live result
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json, os, re
+          from pathlib import Path
+          import crawler
+
+          root = Path(os.environ['SHUZI_RESULTS_DIR'])
+          success = root / '252期-杀数字-成功.txt'
+          failure = root / '252期-杀数字-失败.txt'
+
+          success_rows = []
+          if success.is_file():
+              for line in success.read_text(encoding='utf-8-sig', errors='replace').splitlines():
+                  line = line.strip()
+                  if not line:
+                      continue
+                  parts = line.split(maxsplit=1)
+                  success_rows.append({'line': line, 'name': parts[1].strip() if len(parts) == 2 else ''})
+
+          pattern = re.compile(r'^(?:\[[^]]+\]\s+)?(?P<name>.+?)\s+(?:(?P<region>top|bottom)\s+)?(?P<url>https?://\S+)\s+(?P<reason>.*)$')
+          failure_rows = []
+          if failure.is_file():
+              for line in failure.read_text(encoding='utf-8-sig', errors='replace').splitlines():
+                  match = pattern.match(line.strip())
+                  if match:
+                      failure_rows.append(match.groupdict())
+
+          active = crawler.load_targets()
+          summary = {
+              'issue': '252',
+              'active_targets': len(active),
+              'success_count': len(success_rows),
+              'success_unique_names': len({row['name'] for row in success_rows}),
+              'failure_count': len(failure_rows),
+              'failure_unique_sites': len({(row['name'], row['url']) for row in failure_rows}),
+              'crawler_exit_code': int(os.environ.get('CRAWL_EXIT', '-1')),
+              'success_file': str(success),
+              'failure_file': str(failure),
+              'failures': failure_rows,
+          }
+          (root / 'live-252-summary.json').write_text(json.dumps(summary, ensure_ascii=False, indent=2), encoding='utf-8')
+          print('LIVE252_ACTIVE=' + str(summary['active_targets']))
+          print('LIVE252_SUCCESS=' + str(summary['success_count']))
+          print('LIVE252_FAILURE=' + str(summary['failure_count']))
+          print('LIVE252_EXIT=' + str(summary['crawler_exit_code']))
+          print('--- FAILURE SITES ---')
+          for row in failure_rows:
+              print(f"{row['name']}\t{row['url']}\t{row['reason']}")
+          PY
+
+      - name: Upload live result
+        uses: actions/upload-artifact@v4
+        with:
+          name: live-252-result
+          path: ${{ runner.temp }}/shuzi-results
+          if-no-files-found: warn
+          retention-days: 1
