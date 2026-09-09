@@ -19,24 +19,25 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
+      - name: Inspect CDN leaf certificate hostname identity
+        shell: bash
+        run: |
+          for host in xia01.cosds.aohjifv.com xia02.cosds.aohjifv.com; do
+            echo "===== $host ====="
+            timeout 8 openssl s_client -connect "$host:443" -servername "$host" </dev/null 2>/dev/null | openssl x509 -noout -subject -issuer -ext subjectAltName || true
+          done
       - name: Probe invalid-chain content CDN with narrow insecure transport
         shell: bash
         run: |
           set +e
           probe() {
-            idx="$1"; page="$2"; url="$3"; host="$(python -c 'import sys,urllib.parse;print(urllib.parse.urlsplit(sys.argv[1]).hostname)' "$url")"
+            idx="$1"; page="$2"; url="$3"
             echo "===== $url ====="
-            echo "-- certificate --"
-            timeout 8 openssl s_client -connect "$host:443" -servername "$host" -showcerts </dev/null 2>/tmp/sslerr | grep -E 'subject=|issuer=|Verify return code' | head -20
-            cat /tmp/sslerr | tail -5
-            echo "-- curl verified --"
-            curl -sS -L --max-time 15 -A 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/140 Safari/537.36' -e "$page" -D "/tmp/h${idx}v" -o "/tmp/b${idx}v" "$url"
+            curl -sS -L --max-time 15 -A 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/140 Safari/537.36' -e "$page" -o "/tmp/b${idx}v" "$url"
             echo "verified_exit=$? bytes=$(wc -c </tmp/b${idx}v 2>/dev/null || echo 0)"
-            echo "-- curl exact URL, insecure chain only --"
             curl -k -sS -L --max-time 20 -A 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/140 Safari/537.36' -e "$page" -D "/tmp/h${idx}" -o "/tmp/b${idx}" "$url"
             echo "insecure_exit=$? bytes=$(wc -c </tmp/b${idx} 2>/dev/null || echo 0)"
-            sed -n '1,30p' "/tmp/h${idx}"
-            head -c 300 "/tmp/b${idx}" | tr '\n' ' '; echo
+            sed -n '1,15p' "/tmp/h${idx}"
           }
           probe 1 'https://avfzesda.v3g7d-e00td-idgbab.xyz:16677/topic/472398.html' 'https://xia01.cosds.aohjifv.com/upload/script/09/13d67982e4111710.js'
           probe 2 'https://hpktfgx.p4pj0-e5ads-inqsvz.xyz:16677/topic/465488.html' 'https://xia01.cosds.aohjifv.com/upload/script/09/a9aea095a9b2341c.js'
@@ -59,6 +60,4 @@ jobs:
               corpus='\n'.join([raw,*decoded])
               print('==== SAMPLE',idx,'raw_chars',len(raw),'decoded_parts',len(decoded))
               print('anchor?',anchor in corpus,'252?',('252期' in corpus or '0252期' in corpus),'keywords?',[(k,k in corpus) for k in keywords])
-              for part_no,value in enumerate(decoded[:5],1):
-                  print('decoded',part_no,'chars',len(value),'prefix',repr(value[:400]))
           PY
