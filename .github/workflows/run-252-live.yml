@@ -36,6 +36,7 @@ jobs:
         shell: bash
         run: |
           mkdir -p "$SHUZI_RESULTS_DIR"
+          rm -rf debug_pages
           set +e
           python crawler.py --issues 252 --workers 16 --no-cache-update
           code=$?
@@ -82,15 +83,18 @@ jobs:
           print('LIVE252_SUCCESS=' + str(summary['success_count']))
           print('LIVE252_FAILURE=' + str(summary['failure_count']))
           print('LIVE252_EXIT=' + str(summary['crawler_exit_code']))
-          print('--- FAILURE SITES ---')
-          for row in failure_rows:
-              print(row['name'] + '\t' + row['url'] + '\t' + row['reason'])
           PY
 
-      - name: Upload live result
+      - name: Archive exact source
+        run: git archive --format=zip HEAD -o /tmp/live-252-source.zip
+
+      - name: Upload live diagnostics
         uses: actions/upload-artifact@v4
         with:
-          name: live-252-result
-          path: /tmp/shuzi-results
+          name: live-252-diagnostics
+          path: |
+            /tmp/shuzi-results
+            debug_pages
+            /tmp/live-252-source.zip
           if-no-files-found: warn
           retention-days: 1
