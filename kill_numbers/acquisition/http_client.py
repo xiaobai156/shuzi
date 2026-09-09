@@ -15,12 +15,18 @@ from urllib.error import HTTPError, URLError
 from urllib.parse import urlparse
 from urllib.request import Request, build_opener, HTTPSHandler, HTTPRedirectHandler
 from kill_numbers.acquisition.policy import (
+    CURRENT_POLICY,
     allow_discovered_child_url,
     validate_request_url,
     insecure_for,
 )
 
 MAX_RESPONSE_BYTES = 8 * 1024 * 1024
+
+
+def response_byte_limit() -> int:
+    configured = CURRENT_POLICY.get().max_response_bytes
+    return configured if configured is not None else MAX_RESPONSE_BYTES
 
 
 class SafeRedirectHandler(HTTPRedirectHandler):
@@ -169,7 +175,7 @@ def fetch_content_script_text(url: str, parent_url: str, timeout: int = 25) -> t
     with allow_discovered_child_url(url):
         try:
             data = _content_script_once(url, parent_url, timeout, SSL_CONTEXT)
-            return decode_response(data), False
+            return decode_response(data, max_bytes=MAX_RESPONSE_BYTES), False
         except Exception as exc:
             if not is_incomplete_tls_chain_error(exc):
                 raise
@@ -181,7 +187,7 @@ def fetch_content_script_text(url: str, parent_url: str, timeout: int = 25) -> t
                 timeout,
                 ssl._create_unverified_context(),
             )
-            return decode_response(data), True
+            return decode_response(data, max_bytes=MAX_RESPONSE_BYTES), True
 
 
 REQUEST_RETRIES = 2
@@ -259,13 +265,14 @@ def is_retryable_network_error(exc: Exception | str) -> bool:
 
 def curl_fetch_bytes(url: str, timeout: int = 25) -> bytes:
     validate_request_url(url)
+    max_bytes = response_byte_limit()
     curl = shutil.which("curl.exe") or shutil.which("curl")
     if not curl:
         raise RuntimeError("curl 不可用")
     # Never let curl follow a redirect outside the Python URL policy.
     cmd = [curl, "--fail", "--silent", "--show-error", "--location", "--max-redirs", "0",
            "--proto", "=http,https", "--connect-timeout", str(min(15, timeout)),
-           "--max-time", str(timeout), "--max-filesize", str(MAX_RESPONSE_BYTES),
+           "--max-time", str(timeout), "--max-filesize", str(max_bytes),
            "-A", HEADERS["User-Agent"], "-H", "Accept-Encoding: identity"]
     if insecure_for(url):
         cmd.append("--insecure")
@@ -273,12 +280,13 @@ def curl_fetch_bytes(url: str, timeout: int = 25) -> bytes:
     proc = subprocess.run(cmd, capture_output=True, timeout=timeout+5)
     if proc.returncode:
         raise RuntimeError(f"curl exit {proc.returncode}: {proc.stderr.decode('utf-8', errors='replace')[:300]}")
-    if len(proc.stdout) > MAX_RESPONSE_BYTES:
+    if len(proc.stdout) > max_bytes:
         raise ValueError("响应超过大小限制")
     return proc.stdout
 
 
 def fetch_bytes(url: str, timeout: int = 25) -> bytes:
+    max_bytes = response_byte_limit()
     last_error = None
     for attempt in range(REQUEST_RETRIES):
         try:
@@ -287,8 +295,8 @@ def fetch_bytes(url: str, timeout: int = 25) -> bytes:
             context = ssl._create_unverified_context() if insecure_for(url) else SSL_CONTEXT
             with urlopen(Request(url, headers=HEADERS), timeout=timeout, context=context) as response:
                 validate_request_url(response.geturl())
-                data = response.read(MAX_RESPONSE_BYTES + 1)
-                if len(data) > MAX_RESPONSE_BYTES:
+                data = response.read(max_bytes + 1)
+                if len(data) > max_bytes:
                     raise ValueError("响应超过大小限制")
                 return data
         except HTTPError as exc:
@@ -306,13 +314,14 @@ def fetch_bytes(url: str, timeout: int = 25) -> bytes:
     raise last_error
 
 
-def decode_response(data: bytes) -> str:
+def decode_response(data: bytes, *, max_bytes: int | None = None) -> str:
     if not data:
         return ""
+    limit = response_byte_limit() if max_bytes is None else max_bytes
     if data.startswith(b"\x1f\x8b"):
         with gzip.GzipFile(fileobj=io.BytesIO(data)) as stream:
-            data = stream.read(MAX_RESPONSE_BYTES + 1)
-        if len(data) > MAX_RESPONSE_BYTES:
+            data = stream.read(limit + 1)
+        if len(data) > limit:
             raise ValueError("解压后的响应超过大小限制")
     head = data[:3000].decode("ascii", errors="ignore")
     meta = re.search(r"charset=[\"']?([A-Za-z0-9_-]+)", head, re.I)

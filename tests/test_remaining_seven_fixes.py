@@ -76,6 +76,7 @@ def test_three_consecutive_common_periods_are_enough_for_pair_comparison():
         ("position", "last"),
         ("section_id", "section-1"),
         ("pagination_next_text", "下一页"),
+        ("max_response_bytes", 10 * 1024 * 1024),
     ],
 )
 def test_source_contract_fields_change_cache_signature(field, value):

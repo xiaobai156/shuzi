@@ -30,7 +30,7 @@ def target_signature(target):
     new_contract_fields = (
         'position', 'pagination_next_text', 'section_id', 'content_class',
         'allowed_source_types', 'browser', 'browser_ready_selector',
-        'browser_fallback',
+        'browser_fallback', 'max_response_bytes',
     )
     value = {key: target.get(key) for key in legacy_fields}
     value.update(
