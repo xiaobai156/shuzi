@@ -12,9 +12,16 @@ from kill_numbers.text_utils import (
 )
 
 
-# Direction is a business rule, not a per-site tuning knob.  Every top/bottom
-# parser must use the same three-candidate boundary.
-CANDIDATE_REGION_WINDOW = 3
+# Default direction boundary. A target-level issue_position_window overrides it.
+CANDIDATE_REGION_WINDOW = 5
+
+
+def resolve_candidate_window(value: object) -> int:
+    if value is None:
+        return CANDIDATE_REGION_WINDOW
+    if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+        raise ValueError(f"issue_position_window 必须是正整数，实际为：{value!r}")
+    return value
 BROAD_KEYWORD_MARKERS = (
     "杀",
     "码",
@@ -135,8 +142,9 @@ def find_number_groups(segment: str) -> list[list[str]]:
             source,
         ):
             nums = re.findall(r"\d{2}", match.group(0))
-            nums = [num for num in nums if valid_number(num)]
-            if len(nums) >= 3:
+            # Never repair an invalid group by deleting 00/>49 tokens.  One
+            # invalid token invalidates the whole source group.
+            if len(nums) >= 3 and all(valid_number(num) for num in nums):
                 found.append(nums)
         return found
 
@@ -290,11 +298,18 @@ def scope_text_by_anchor_with_offset(
     if start_index < 0:
         raise ValueError(f"没有找到正文锚点：{anchor_list}")
 
-    end_index = len(text)
-    for stop_anchor in as_list(stop_anchors):
-        candidate = find_anchor_index(text, stop_anchor, start=start_index + 1)
-        if candidate >= 0:
-            end_index = min(end_index, candidate)
+    stop_anchor_list = as_list(stop_anchors)
+    if stop_anchor_list:
+        candidates = [
+            find_anchor_index(text, stop_anchor, start=start_index + 1)
+            for stop_anchor in stop_anchor_list
+        ]
+        candidates = [candidate for candidate in candidates if candidate >= 0]
+        if not candidates:
+            raise ValueError(f"找到正文锚点，但没有找到结束锚点：{stop_anchor_list}")
+        end_index = min(candidates)
+    else:
+        end_index = len(text)
 
     return text[start_index:end_index], start_index
 
@@ -312,17 +327,20 @@ def filter_candidates_by_region(
     text_length: int | None = None,
     strict_window: bool = False,
     require_region: bool = False,
+    window_size: int | None = None,
 ):
+    _ = text_length, strict_window
     region = normalize_region(region)
     if require_region and not region:
         return []
     if not region:
         return candidates
 
+    window = resolve_candidate_window(window_size)
     ordered = sorted(candidates, key=lambda item: item[2])
     if region == "top":
-        return ordered[:CANDIDATE_REGION_WINDOW]
-    return ordered[-CANDIDATE_REGION_WINDOW:]
+        return ordered[:window]
+    return ordered[-window:]
 
 def needs_strict_region_window(candidates: list[tuple[list[str], str, int]]) -> bool:
     # Multiple candidates for one issue are always evaluated inside the same
@@ -335,15 +353,13 @@ def issue_position_window_starts(
     expected_count: int | None,
     region: str | None,
     issue_position_window: int | None,
+    allow_duplicate_numbers: bool = False,
 ) -> set[int] | None:
     region = normalize_region(region)
     if not region:
         return None
 
-    # Legacy issue_position_window values remain in targets.json for audit
-    # history, but never widen the direction boundary.
-    window = CANDIDATE_REGION_WINDOW
-
+    window = resolve_candidate_window(issue_position_window)
     keyword_list = [normalize_keyword(keyword) for keyword in (keywords or []) if keyword]
     candidates: list[tuple[list[str], str, int]] = []
     for match in iter_all_issue_segment_matches(text):
@@ -354,20 +370,18 @@ def issue_position_window_starts(
         groups = [
             group
             for group in find_number_groups(segment)
-            if not expected_count or len(group) == expected_count
+            if (not expected_count or len(group) == expected_count)
+            and (allow_duplicate_numbers or not has_duplicate_numbers(group))
         ]
         if groups:
+            # A source row occupies one position regardless of how many number
+            # groups it contains.  All groups are evaluated later for conflict.
             candidates.append((groups[0], segment, match.start()))
-            # Top windows only depend on their first N valid rows.  Do not scan
-            # the historical tail of a long user page once that boundary is known.
-            if region != "bottom" and len(candidates) >= window:
+            if region == "top" and len(candidates) >= window:
                 break
 
     ordered = sorted(candidates, key=lambda item: item[2])
-    if region == "bottom":
-        selected = ordered[-window:]
-    else:
-        selected = ordered[:window]
+    selected = ordered[:window] if region == "top" else ordered[-window:]
     return {start for _group, _segment, start in selected}
 
 def extract_issue_numbers(
@@ -393,9 +407,10 @@ def extract_issue_numbers(
         expected_count,
         region,
         issue_position_window,
+        allow_duplicate_numbers=allow_duplicate_numbers,
     )
     for issue in issues:
-        candidates = []
+        candidates: list[tuple[list[str], str, int]] = []
         for match in issue_segment_matches(text, issue):
             if allowed_window_starts is not None and match.start() not in allowed_window_starts:
                 continue
@@ -403,33 +418,37 @@ def extract_issue_numbers(
             compact_segment = normalize_keyword(segment)
             if keyword_list and not any(keyword in compact_segment for keyword in keyword_list):
                 continue
-            groups = find_number_groups(segment)
-            for group in groups:
+            for group in find_number_groups(segment):
                 if expected_count and len(group) != expected_count:
-                    # 数量不符直接拒绝，不能从其他组或其他位置补数字来凑够 count。
+                    continue
+                if not allow_duplicate_numbers and has_duplicate_numbers(group):
                     continue
                 candidates.append((group, segment, scope_offset + match.start()))
-        if candidates:
-            strict_region = needs_strict_region_window(candidates)
-            normalized_region = normalize_region(region)
+
+        if not candidates:
+            continue
+
+        normalized_region = normalize_region(region)
+        # A configured region has already been applied to valid source rows by
+        # issue_position_window_starts.  Applying a second window to individual
+        # number groups could hide a conflict in the last selected row.
+        if allowed_window_starts is None and normalized_region:
             candidates = filter_candidates_by_region(
                 candidates,
-                region,
-                len(full_text) if len(issues) == 1 and allowed_window_starts is None else None,
-                strict_window=strict_region,
-                require_region=strict_region and bool(normalized_region),
+                normalized_region,
+                window_size=issue_position_window,
             )
-            candidate_position = position
-            candidate_strict_ambiguous = strict_ambiguous
-            if strict_region and normalized_region:
-                candidate_position = "last" if normalized_region == "bottom" else "first"
-            selected = select_candidate(
-                [(group, segment) for group, segment, _ in candidates],
-                position=candidate_position,
-                strict_ambiguous=candidate_strict_ambiguous,
-                issue=issue,
-                allow_duplicate_numbers=allow_duplicate_numbers,
-            )
-            if selected:
-                found[issue] = selected
+
+        candidate_position = position
+        if normalized_region:
+            candidate_position = "last" if normalized_region == "bottom" else "first"
+        selected = select_candidate(
+            [(group, segment) for group, segment, _offset in candidates],
+            position=candidate_position,
+            strict_ambiguous=strict_ambiguous,
+            issue=issue,
+            allow_duplicate_numbers=allow_duplicate_numbers,
+        )
+        if selected:
+            found[normalize_issue(issue)] = selected
     return found

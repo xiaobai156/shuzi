@@ -1,4 +1,6 @@
+import hashlib
 import re
+import time
 import subprocess
 import sys
 from dataclasses import dataclass
@@ -20,6 +22,8 @@ class IssueRun:
     returncode: int
     success_file: Path
     failed_file: Path
+    success_fresh: bool = True
+    failure_fresh: bool = True
 
 
 def configure_output_encoding() -> None:
@@ -30,8 +34,10 @@ def configure_output_encoding() -> None:
             pass
 
 
-def success_names(result_file: Path) -> set[str]:
+def success_names(result_file: Path, *, fresh: bool = True) -> set[str]:
     names = set()
+    if not fresh:
+        return names
     if not result_file.exists():
         return names
     for line in result_file.read_text(encoding="utf-8", errors="replace").splitlines():
@@ -44,8 +50,10 @@ def success_names(result_file: Path) -> set[str]:
     return names
 
 
-def failure_reasons(failed_file: Path) -> dict[str, str]:
+def failure_reasons(failed_file: Path, *, fresh: bool = True) -> dict[str, str]:
     reasons = {}
+    if not fresh:
+        return reasons
     if not failed_file.exists():
         return reasons
     pattern = re.compile(r"^\[[^\]]+\]\s+(.+?)\s+(https?://\S+)\s+(.*)$")
@@ -72,8 +80,11 @@ def write_multi_failure_report(runs: list[IssueRun], report_file: Path) -> list[
     reasons_by_issue: dict[str, dict[str, str]] = {}
 
     for run in runs:
-        passed_names.update(success_names(run.success_file))
-        reasons_by_issue[run.issue] = failure_reasons(run.failed_file)
+        passed_names.update(success_names(run.success_file, fresh=run.success_fresh))
+        reasons_by_issue[run.issue] = failure_reasons(
+            run.failed_file,
+            fresh=run.failure_fresh,
+        )
 
     all_failed = [name for name in active_names if name not in passed_names]
     lines = [
@@ -102,7 +113,22 @@ def write_multi_failure_report(runs: list[IssueRun], report_file: Path) -> list[
     return all_failed
 
 
+def _file_signature(path: Path) -> tuple[int, int, str] | None:
+    if not path.exists():
+        return None
+    data = path.read_bytes()
+    stat = path.stat()
+    return stat.st_mtime_ns, len(data), hashlib.sha256(data).hexdigest()
+
+
 def run_issue(issue: str) -> IssueRun:
+    result_file, failed_file, _report_file = crawler.output_files_for_issues([issue])
+    success_path = Path(result_file)
+    failure_path = Path(failed_file)
+    before_success = _file_signature(success_path)
+    before_failure = _file_signature(failure_path)
+    started_ns = time.time_ns()
+
     cmd = [
         sys.executable,
         str(CRAWLER_FILE),
@@ -115,12 +141,26 @@ def run_issue(issue: str) -> IssueRun:
     print()
     print(f"开始抓取 {issue}期")
     result = subprocess.run(cmd, cwd=BASE_DIR)
-    result_file, failed_file, _report_file = crawler.output_files_for_issues([issue])
+    after_success = _file_signature(success_path)
+    after_failure = _file_signature(failure_path)
+
+    success_fresh = bool(
+        after_success
+        and after_success != before_success
+        and after_success[0] >= started_ns
+    )
+    failure_fresh = bool(
+        after_failure
+        and after_failure != before_failure
+        and after_failure[0] >= started_ns
+    )
     return IssueRun(
         issue=issue,
         returncode=result.returncode,
-        success_file=Path(result_file),
-        failed_file=Path(failed_file),
+        success_file=success_path,
+        failed_file=failure_path,
+        success_fresh=success_fresh,
+        failure_fresh=failure_fresh,
     )
 
 

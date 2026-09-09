@@ -11,6 +11,7 @@ from kill_numbers.parsing.common import (
     iter_all_issue_segment_matches,
     needs_strict_region_window,
     normalize_region,
+    resolve_candidate_window,
     scope_text_by_anchor,
 )
 from kill_numbers.text_utils import (
@@ -37,12 +38,14 @@ def diagnose_issue_mismatch(
     text = scope_text_by_anchor(text, anchor, stop_anchor)
     keyword_list = [normalize_keyword(keyword) for keyword in (keywords or []) if keyword]
     normalized_region = normalize_region(region)
+    window = resolve_candidate_window(issue_position_window)
     allowed_window_starts = issue_position_window_starts(
         text,
         keywords,
         expected_count,
         region,
         issue_position_window,
+        allow_duplicate_numbers=allow_duplicate_numbers,
     )
 
     for issue in issues:
@@ -88,7 +91,7 @@ def diagnose_issue_mismatch(
         if valid_candidate_outside_window and not region_candidates:
             messages.append(
                 f"找到该期候选，但不在配置位置 {normalized_region or '未配置'} "
-                f"最新 {CANDIDATE_REGION_WINDOW} 条同栏目内"
+                f"最新 {window} 条同栏目内"
             )
         if region_candidates:
             strict_region = needs_strict_region_window(region_candidates)
@@ -105,7 +108,7 @@ def diagnose_issue_mismatch(
             if not selected:
                 preview = " | ".join(",".join(group) for group, _segment, _start in region_candidates[:5])
                 messages.append(
-                    f"找到该期符合数量的候选，但不在配置位置 {normalized_region or '未配置'} 最新 {CANDIDATE_REGION_WINDOW} 组内：{preview}"
+                    f"找到该期符合数量的候选，但不在配置位置 {normalized_region or '未配置'} 最新 {window} 组内：{preview}"
                 )
         if messages:
             diagnostics[issue] = "；".join(unique_keep_order(messages))
@@ -126,7 +129,7 @@ def detect_available_issues(
     text = html_to_text(text)
     text = scope_text_by_anchor(text, anchor, stop_anchor)
 
-    if issue_position_window:
+    if normalize_region(region):
         allowed_window_starts = issue_position_window_starts(
             text,
             keywords,

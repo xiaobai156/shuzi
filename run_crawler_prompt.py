@@ -19,12 +19,17 @@ def latest_issue_from_input(raw_issues: str, default_issues: str) -> str:
 
 
 def crawler_command_for_input(raw_issues: str) -> list[str]:
-    cmd = [sys.executable, str(CRAWLER_FILE), "--workers", str(CRAWLER_WORKERS)]
-    if raw_issues:
-        cmd.extend(["--issues", raw_issues])
-        if len(crawler.parse_issues(raw_issues)) > 1:
-            cmd.append("--no-cache-update")
-    return cmd
+    parsed = crawler.parse_issues(raw_issues or crawler.DEFAULT_ISSUES)
+    if len(parsed) != 1:
+        raise ValueError("单期入口只允许一个期数；多个期数请使用多期入口。")
+    return [
+        sys.executable,
+        str(CRAWLER_FILE),
+        "--workers",
+        str(CRAWLER_WORKERS),
+        "--issues",
+        parsed[0],
+    ]
 
 
 def configure_output_encoding() -> None:
@@ -43,7 +48,11 @@ def main() -> int:
     crawl_issues = crawler.parse_issues(issues or crawler.DEFAULT_ISSUES)
     latest_issue = latest_issue_from_input(issues, crawler.DEFAULT_ISSUES)
 
-    cmd = crawler_command_for_input(issues)
+    try:
+        cmd = crawler_command_for_input(issues)
+    except ValueError as exc:
+        print(exc)
+        return 2
 
     print()
     print("正在启动...")

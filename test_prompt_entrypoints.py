@@ -1,5 +1,7 @@
 import inspect
 
+import pytest
+
 import crawler
 import run_crawler_multi_prompt as multi_prompt
 import run_crawler_prompt as prompt
@@ -13,9 +15,10 @@ def test_single_prompt_no_longer_contains_a_second_cache_or_output_path():
     assert "check_duplicates" not in source
 
 
-def test_single_prompt_disables_cache_updates_for_multiple_issues():
+def test_single_prompt_rejects_multiple_issues():
     assert "--no-cache-update" not in prompt.crawler_command_for_input("187")
-    assert "--no-cache-update" in prompt.crawler_command_for_input("187 188")
+    with pytest.raises(ValueError, match="单期入口只允许一个期数"):
+        prompt.crawler_command_for_input("187 188")
 
 
 def test_multi_prompt_uses_atomic_report_write_and_keeps_blank_line_between_sites(tmp_path, monkeypatch):
