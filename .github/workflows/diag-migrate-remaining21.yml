@@ -1,4 +1,4 @@
-name: Inspect root identity API
+name: Verify rolling manager articles
 
 on:
   push:
@@ -9,7 +9,7 @@ permissions:
   contents: read
 
 jobs:
-  inspect:
+  verify:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     env:
@@ -19,44 +19,42 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-      - name: Install Chromium
-        run: |
-          python -m pip install playwright
-          python -m playwright install chromium
-      - name: Capture data responses carrying target identities
+      - name: Validate 252 from authoritative landing objects
         shell: bash
         run: |
           python - <<'PY'
-          from playwright.sync_api import sync_playwright
-          root='https://szfzml.mfuw8-bnsfa-gdaxhk.xyz/'
-          needles=['寿比南山','弦无虚发','博彩兵书']
-          with sync_playwright() as p:
-              b=p.chromium.launch(headless=True)
-              page=b.new_page()
-              hits=[]
-              def on_response(resp):
-                  try:
-                      ct=(resp.headers.get('content-type') or '').lower()
-                      if 'json' not in ct and '/api/' not in resp.url:
-                          return
-                      text=resp.text()
-                      if len(text)>8_000_000:
-                          text=text[:8_000_000]
-                      matched=[n for n in needles if n in text]
-                      if matched:
-                          hits.append((resp.status,resp.url,ct,matched,text))
-                  except Exception:
-                      pass
-              page.on('response',on_response)
-              page.goto(root,wait_until='domcontentloaded',timeout=15000)
-              try: page.wait_for_load_state('networkidle',timeout=8000)
-              except Exception: pass
-              page.wait_for_timeout(1500)
-              print('HIT_COUNT',len(hits))
-              for status,url,ct,matched,text in hits:
-                  print('\nRESPONSE',status,url,ct,'MATCHED',matched,'LEN',len(text))
-                  for name in matched:
-                      idx=text.find(name)
-                      print('SNIP',name,repr(text[max(0,idx-1200):idx+2500]))
-              b.close()
+          import crawler
+          from kill_numbers.acquisition.policy import target_policy
+          from kill_numbers.acquisition.strategies.admin_article import find_admin_article_in_landing_data, admin_article_dict_to_content, validate_identity_article_api_data
+          from kill_numbers.parsing.registry import parse_target_content, available_issues_from_content
+
+          landing_url='https://szfzml.mfuw8-bnsfa-gdaxhk.xyz/api/proxy/landing-page-data?url=csy'
+          ids={
+              '寿比南山':'6a96d6011d10beea56c80e16',
+              '弦无虚发':'6a96d6a51d10beea56c80e86',
+          }
+          targets={t['name']:t for t in crawler.load_targets()}
+          for name,article_id in ids.items():
+              t=dict(targets[name])
+              t.update({
+                  'special_parser':'identity_article_bottom_10',
+                  'article_identity':name,
+                  'anchor':name,
+                  'region':'bottom',
+                  'count':10,
+              })
+              with target_policy(t,['252']):
+                  landing=crawler.fetch_json(landing_url)
+              article=find_admin_article_in_landing_data(landing,article_id)
+              if article is None:
+                  raise SystemExit(f'{name}: authoritative object missing')
+              validate_identity_article_api_data(article,t)
+              article_name,content=admin_article_dict_to_content(article,f'https://szfzml.mfuw8-bnsfa-gdaxhk.xyz/article/manager/{article_id}?url=csy')
+              print('\n===',name,'===')
+              print('AUTHOR',article_name,'ID',article_id)
+              print('AVAILABLE_TAIL',available_issues_from_content(content,t)[-12:])
+              found=parse_target_content(content,t,['252'])
+              print('FOUND',found)
+              if '252' not in found or len(found['252'])!=10 or len(set(found['252']))!=10:
+                  raise SystemExit(f'{name}: invalid 252')
           PY
