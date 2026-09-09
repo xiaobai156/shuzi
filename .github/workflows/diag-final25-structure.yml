@@ -1,0 +1,88 @@
+name: Diagnose final25 structures
+
+on:
+  push:
+    branches:
+      - diag/final25-structure-20260910
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      PYTHONUTF8: '1'
+      SHUZI_BROWSER_CONCURRENCY: '2'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: diag/final25-structure-20260910
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Inspect repeated scopes and dedicated parsers
+        shell: bash
+        run: |
+          python - <<'PY'
+          import re
+          import crawler
+          from kill_numbers.acquisition.policy import target_policy
+          from kill_numbers.acquisition.documents import parseable_documents
+          from kill_numbers.parsing.common import (
+              anchor_scope_candidates, candidate_rows, windowed_rows,
+          )
+          from kill_numbers.text_utils import html_to_text
+
+          targets={t['name']:t for t in crawler.load_targets()}
+          repeated=['花和尚','凌晨交界','狙杀十码']
+          dedicated=['六合绝杀十码','湖心小筑','新竹论坛','醉八仙']
+
+          for name in repeated:
+              t=targets[name]
+              print(f'\n=== REPEATED {name} ===')
+              try:
+                  with target_policy(t,['252']):
+                      _,docs=crawler.fetch_target_documents(t,['252'])
+                  for di,doc in enumerate(parseable_documents(docs)):
+                      text=html_to_text(doc.content)
+                      print(f'DOC {di} kind={doc.kind} url={doc.url} priority={doc.priority} chars={len(text)}')
+                      try:
+                          scopes=anchor_scope_candidates(text,t.get('anchor'),t.get('stop_anchor'))
+                      except Exception as e:
+                          print('SCOPES_ERROR',type(e).__name__,str(e)); continue
+                      print('SCOPES',len(scopes))
+                      for si,scope in enumerate(scopes):
+                          rows=list(candidate_rows(scope.text,t.get('keywords'),t.get('count'),t.get('allow_duplicate_numbers',False)))
+                          selected=windowed_rows(rows,t.get('region'),t.get('issue_position_window'))
+                          print(f'SCOPE {si} bounds={scope.start}:{scope.end} rows={len(rows)} selected={len(selected)}')
+                          for row in selected:
+                              print(' ROW',row.issue,[list(g) for g in row.groups],repr(row.segment[:180]))
+                          raw252=[row for row in rows if row.issue=='252']
+                          for row in raw252:
+                              print(' RAW252', [list(g) for g in row.groups], repr(row.segment[:240]))
+              except Exception as e:
+                  print('FETCH_OR_PARSE_ERROR',type(e).__name__,str(e))
+
+          for name in dedicated:
+              t=targets[name]
+              print(f'\n=== DEDICATED {name} ===')
+              try:
+                  with target_policy(t,['252']):
+                      _,docs=crawler.fetch_target_documents(t,['252'])
+                  for di,doc in enumerate(parseable_documents(docs)):
+                      text=html_to_text(doc.content)
+                      print(f'DOC {di} kind={doc.kind} url={doc.url} priority={doc.priority} chars={len(text)}')
+                      hits=[m.start() for m in re.finditer(r'(?<!\d)0?252\s*期',text)]
+                      print('252_HITS',len(hits))
+                      for pos in hits[:8]:
+                          print(' AROUND252',repr(text[max(0,pos-220):pos+520]))
+                  try:
+                      found,sel=crawler.parse_target_documents(docs,t,['252'])
+                      print('PARSE_FOUND',found,'SELECTED',None if sel is None else (sel.kind,sel.url))
+                  except Exception as e:
+                      print('PARSE_ERROR',type(e).__name__,str(e))
+              except Exception as e:
+                  print('FETCH_ERROR',type(e).__name__,str(e))
+          PY
