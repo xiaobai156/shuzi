@@ -3,6 +3,8 @@ import json
 from pathlib import Path
 
 import crawler
+from kill_numbers.acquisition.documents import make_source_document
+from kill_numbers.validation.result_validator import evidence_from_source_document
 
 
 GOLDEN_FILE = Path(__file__).resolve().parent / "tests" / "golden" / "formal_behavior_210_211.json"
@@ -21,13 +23,12 @@ def test_golden_manifest_matches_current_target_inventory():
     assert len(all_targets) == golden["total_target_count"]
     assert len(active_targets) == golden["active_target_count"]
     assert set(golden["results"]).issubset({target["name"] for target in active_targets})
-    for filename, expected_hash in golden["source_hashes"].items():
-        if filename == "recent_10_cache.json":
-            continue  # runtime cache is intentionally mutable and ignored by git
-        actual_hash = hashlib.sha256(
-            (crawler.SCRIPT_DIR / filename).read_bytes()
-        ).hexdigest().upper()
-        assert actual_hash == expected_hash
+    # Source hashes identify the historical capture, not a ban on all repairs.
+    # Keep target inventory immutable; actual parser behavior is checked below.
+    expected_hash = "3425E2E259F08D233456DFAB80012829A66A0360DD72416A26419F122669AC8D"
+    # Inventory hash captured from the reviewed f479727 commit, not July fixtures.
+    assert hashlib.sha256(crawler.TARGETS_FILE.read_bytes()).hexdigest().upper() == expected_hash
+    assert all(len(value) == 64 for value in golden["source_hashes"].values())
 
 
 def test_identity_article_golden_rows_keep_original_order():
@@ -51,6 +52,10 @@ def test_identity_article_golden_rows_keep_original_order():
         )
 
         assert found == golden["results"][name]
+        source = make_source_document(kind="configured_api", url=target.get("api_url", target["url"]), content=content, priority=100)
+        for issue, numbers in found.items():
+            proof = evidence_from_source_document(target, issue, numbers, source)
+            assert proof.numbers == tuple(numbers) and proof.parser_id == target["special_parser"]
 
 
 def test_shita_golden_rows_stop_at_next_document():

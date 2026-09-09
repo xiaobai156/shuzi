@@ -1,4 +1,5 @@
 import re
+from dataclasses import dataclass
 from collections.abc import Iterable
 
 from kill_numbers.text_utils import (
@@ -12,16 +13,64 @@ from kill_numbers.text_utils import (
 )
 
 
-# Default direction boundary. A target-level issue_position_window overrides it.
+# Default only: an explicitly configured window is a business contract.
 CANDIDATE_REGION_WINDOW = 5
 
 
-def resolve_candidate_window(value: object) -> int:
+def resolve_candidate_window(value: object = None) -> int:
     if value is None:
         return CANDIDATE_REGION_WINDOW
-    if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
-        raise ValueError(f"issue_position_window 必须是正整数，实际为：{value!r}")
+    if type(value) is not int or value <= 0:
+        raise ValueError(f"issue_position_window 必须是正整数：{value!r}")
     return value
+
+
+
+def target_candidate_window(target: dict) -> int:
+    default = 3 if target.get("special_parser") in {"zuibaxian_top7", "fengwu_jiutian_bottom_10"} else None
+    return resolve_candidate_window(target.get("issue_position_window", default))
+
+
+@dataclass(frozen=True)
+class CandidateRow:
+    issue: str
+    groups: tuple[tuple[str, ...], ...]
+    start: int
+    end: int
+    segment: str
+
+
+def candidate_rows(text, keywords=None, expected_count=None, allow_duplicate_numbers=False):
+    """One slot per valid logical row, not per number group or unvalidated post."""
+    keyword_list = [normalize_keyword(k) for k in (keywords or []) if k]
+    for match in iter_all_issue_segment_matches(text):
+        segment = match.group(0)
+        if keyword_list and not any(k in normalize_keyword(segment) for k in keyword_list):
+            continue
+        groups = []
+        for group in find_number_groups(segment):
+            if expected_count is not None and len(group) != expected_count:
+                continue
+            if not allow_duplicate_numbers and has_duplicate_numbers(group):
+                continue
+            group = tuple(group)
+            if group not in groups:
+                groups.append(group)
+        if groups:
+            yield CandidateRow(normalize_issue(match.group(1)), tuple(groups),
+                               match.start(), match.end(), segment)
+
+
+def windowed_rows(rows, region, window=None):
+    values = list(rows)
+    size = resolve_candidate_window(window)
+    direction = normalize_region(region)
+    if direction == "top":
+        return values[:size]
+    if direction == "bottom":
+        return values[-size:]
+    return values
+
 BROAD_KEYWORD_MARKERS = (
     "杀",
     "码",
@@ -130,31 +179,26 @@ def valid_number(token: str) -> bool:
 
 def find_number_groups(segment: str) -> list[list[str]]:
     before_open = re.split(r"[=＝]?\s*开\s*[:：]?", segment, maxsplit=1)[0]
-    before_open = before_open.replace("杀", " ")
 
     def collect(source: str) -> list[list[str]]:
         found = []
-        # 每个 match 都是一组独立号码。禁止把多组、开奖号、日期或其他栏目拼接来凑 count。
-        # 优先抓一串 2 位数，分隔符可以是点、空格、逗号、顿号等。
-        # 分隔符必须存在，避免把日期 2020-10-02 19:41:06 当成号码。
+        # Match the ENTIRE numeric run. Never trim 00/50 or a third digit to
+        # manufacture a valid count from an invalid group.
         for match in re.finditer(
-            r"(?<!\d)\d{2}(?:[\s.,，。、;；|/\\]+\d{2}){2,}",
-            source,
+            r"(?<!\d)\d+(?:[\s.,，。、;；|/\\]+\d+){2,}(?!\d)",
+            source.replace("杀", " "),
         ):
-            nums = re.findall(r"\d{2}", match.group(0))
-            # Never repair an invalid group by deleting 00/>49 tokens.  One
-            # invalid token invalidates the whole source group.
-            if len(nums) >= 3 and all(valid_number(num) for num in nums):
-                found.append(nums)
+            nums = re.findall(r"\d+", match.group(0))
+            if any(len(num) != 2 or not valid_number(num) for num in nums):
+                continue
+            found.append(nums)
         return found
 
     groups = collect(before_open)
     if not groups:
-        # 有些页面把“开:00准”放在第一行，号码放到下一行。
-        groups = collect(segment.replace("杀", " "))
-
-    groups.sort(key=len, reverse=True)
-    return groups
+        # Supported template: a pending/open marker followed by a bracketed row.
+        groups = collect(segment)
+    return sorted(groups, key=len, reverse=True)
 
 def has_duplicate_numbers(numbers: list[str]) -> bool:
     return len(numbers) != len(set(numbers))
@@ -287,10 +331,7 @@ def scope_text_by_anchor_with_offset(
     stop_anchors=None,
 ) -> tuple[str, int]:
     anchor_list = as_list(anchors)
-    if not anchor_list:
-        return text, 0
-
-    start_index = -1
+    start_index = 0 if not anchor_list else -1
     for anchor in anchor_list:
         start_index = find_anchor_index(text, anchor)
         if start_index >= 0:
@@ -298,19 +339,12 @@ def scope_text_by_anchor_with_offset(
     if start_index < 0:
         raise ValueError(f"没有找到正文锚点：{anchor_list}")
 
-    stop_anchor_list = as_list(stop_anchors)
-    if stop_anchor_list:
-        candidates = [
-            find_anchor_index(text, stop_anchor, start=start_index + 1)
-            for stop_anchor in stop_anchor_list
-        ]
-        candidates = [candidate for candidate in candidates if candidate >= 0]
-        if not candidates:
-            raise ValueError(f"找到正文锚点，但没有找到结束锚点：{stop_anchor_list}")
-        end_index = min(candidates)
-    else:
-        end_index = len(text)
-
+    stops = as_list(stop_anchors)
+    end_positions = [find_anchor_index(text, stop, start=start_index + 1) for stop in stops]
+    end_positions = [end for end in end_positions if end >= 0]
+    if stops and not end_positions:
+        raise ValueError(f"没有找到正文结束锚点：{stops}")
+    end_index = min(end_positions) if end_positions else len(text)
     return text[start_index:end_index], start_index
 
 def normalize_region(region: str | None) -> str:
@@ -327,20 +361,16 @@ def filter_candidates_by_region(
     text_length: int | None = None,
     strict_window: bool = False,
     require_region: bool = False,
-    window_size: int | None = None,
+    issue_position_window: int | None = None,
 ):
-    _ = text_length, strict_window
     region = normalize_region(region)
     if require_region and not region:
         return []
     if not region:
         return candidates
 
-    window = resolve_candidate_window(window_size)
     ordered = sorted(candidates, key=lambda item: item[2])
-    if region == "top":
-        return ordered[:window]
-    return ordered[-window:]
+    return windowed_rows(ordered, region, issue_position_window)
 
 def needs_strict_region_window(candidates: list[tuple[list[str], str, int]]) -> bool:
     # Multiple candidates for one issue are always evaluated inside the same
@@ -355,34 +385,11 @@ def issue_position_window_starts(
     issue_position_window: int | None,
     allow_duplicate_numbers: bool = False,
 ) -> set[int] | None:
-    region = normalize_region(region)
-    if not region:
+    if not normalize_region(region):
         return None
+    rows = candidate_rows(text, keywords, expected_count, allow_duplicate_numbers)
+    return {row.start for row in windowed_rows(rows, region, issue_position_window)}
 
-    window = resolve_candidate_window(issue_position_window)
-    keyword_list = [normalize_keyword(keyword) for keyword in (keywords or []) if keyword]
-    candidates: list[tuple[list[str], str, int]] = []
-    for match in iter_all_issue_segment_matches(text):
-        segment = match.group(0)
-        compact_segment = normalize_keyword(segment)
-        if keyword_list and not any(keyword in compact_segment for keyword in keyword_list):
-            continue
-        groups = [
-            group
-            for group in find_number_groups(segment)
-            if (not expected_count or len(group) == expected_count)
-            and (allow_duplicate_numbers or not has_duplicate_numbers(group))
-        ]
-        if groups:
-            # A source row occupies one position regardless of how many number
-            # groups it contains.  All groups are evaluated later for conflict.
-            candidates.append((groups[0], segment, match.start()))
-            if region == "top" and len(candidates) >= window:
-                break
-
-    ordered = sorted(candidates, key=lambda item: item[2])
-    selected = ordered[:window] if region == "top" else ordered[-window:]
-    return {start for _group, _segment, start in selected}
 
 def extract_issue_numbers(
     text: str,
@@ -396,59 +403,29 @@ def extract_issue_numbers(
     stop_anchor=None,
     region: str | None = None,
     issue_position_window: int | None = None,
+    allowed_row_starts: set[int] | None = None,
 ) -> dict[str, list[str]]:
-    found = {}
     full_text = html_to_text(text)
-    text, scope_offset = scope_text_by_anchor_with_offset(full_text, anchor, stop_anchor)
-    keyword_list = [normalize_keyword(keyword) for keyword in (keywords or []) if keyword]
-    allowed_window_starts = issue_position_window_starts(
-        text,
-        keywords,
-        expected_count,
-        region,
-        issue_position_window,
-        allow_duplicate_numbers=allow_duplicate_numbers,
+    section, _offset = scope_text_by_anchor_with_offset(full_text, anchor, stop_anchor)
+    rows = list(candidate_rows(section, keywords, expected_count, allow_duplicate_numbers))
+    selected_rows = (
+        [row for row in rows if row.start in allowed_row_starts]
+        if allowed_row_starts is not None
+        else windowed_rows(rows, region, issue_position_window)
     )
-    for issue in issues:
-        candidates: list[tuple[list[str], str, int]] = []
-        for match in issue_segment_matches(text, issue):
-            if allowed_window_starts is not None and match.start() not in allowed_window_starts:
-                continue
-            segment = match.group(0)
-            compact_segment = normalize_keyword(segment)
-            if keyword_list and not any(keyword in compact_segment for keyword in keyword_list):
-                continue
-            for group in find_number_groups(segment):
-                if expected_count and len(group) != expected_count:
-                    continue
-                if not allow_duplicate_numbers and has_duplicate_numbers(group):
-                    continue
-                candidates.append((group, segment, scope_offset + match.start()))
-
-        if not candidates:
-            continue
-
-        normalized_region = normalize_region(region)
-        # A configured region has already been applied to valid source rows by
-        # issue_position_window_starts.  Applying a second window to individual
-        # number groups could hide a conflict in the last selected row.
-        if allowed_window_starts is None and normalized_region:
-            candidates = filter_candidates_by_region(
-                candidates,
-                normalized_region,
-                window_size=issue_position_window,
+    found = {}
+    for raw_issue in issues:
+        issue = normalize_issue(raw_issue)
+        candidates = [
+            (list(group), row.segment)
+            for row in selected_rows if row.issue == issue
+            for group in row.groups
+        ]
+        if candidates:
+            selected = select_candidate(
+                candidates, position=position, strict_ambiguous=True,
+                issue=issue, allow_duplicate_numbers=allow_duplicate_numbers,
             )
-
-        candidate_position = position
-        if normalized_region:
-            candidate_position = "last" if normalized_region == "bottom" else "first"
-        selected = select_candidate(
-            [(group, segment) for group, segment, _offset in candidates],
-            position=candidate_position,
-            strict_ambiguous=strict_ambiguous,
-            issue=issue,
-            allow_duplicate_numbers=allow_duplicate_numbers,
-        )
-        if selected:
-            found[normalize_issue(issue)] = selected
+            if selected:
+                found[issue] = selected
     return found

@@ -24,6 +24,14 @@ class TargetContract:
 
     @classmethod
     def from_mapping(cls, value: Mapping[str, Any]) -> "TargetContract":
+        for key in ("allow_ambiguous", "allow_duplicate_numbers", "disabled"):
+            if key in value and type(value[key]) is not bool:
+                raise ValueError(f"{key} 必须是JSON布尔值")
+        if value.get("count") is not None and (type(value["count"]) is not int or value["count"] <= 0):
+            raise ValueError("count 必须是正整数")
+        keywords = value.get("keywords", [])
+        if not isinstance(keywords, (list, tuple)) or any(not isinstance(k, str) for k in keywords):
+            raise ValueError("keywords 必须是字符串列表")
         known = {
             "url",
             "name",

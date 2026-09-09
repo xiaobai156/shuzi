@@ -1,4 +1,5 @@
 import argparse
+import os
 import glob
 import json
 import re
@@ -8,10 +9,20 @@ from datetime import datetime
 from pathlib import Path
 
 from run_lock import exclusive_run_lock
+from kill_numbers.domain.periods import (
+    canonical_url, cycle_key, period_key, period_sort_key, split_period,
+    are_consecutive, validate_cycle_lengths, target_identity, recent_periods,
+)
+from kill_numbers.infrastructure.cache_repository import CACHE_VERSION, target_signature
+from kill_numbers.validation.duplicate_gate import (
+    DetectionStatus, EXIT_CODES, completeness_reasons, status_for_detection,
+    normalize_numbers as normalize_number_string,
+)
 from kill_numbers.application.batch_service import iter_completed_batch
 from kill_numbers.infrastructure.file_store import atomic_write_json, atomic_write_text
 from kill_numbers.parsing.registry import ACQUISITION_ONLY_PARSERS
-from kill_numbers.validation.result_validator import validate_crawl_results
+from kill_numbers.validation.result_validator import validate_crawl_results, evidence_from_source_document
+from kill_numbers.acquisition.policy import target_policy
 
 
 DEFAULT_OUTPUT = "重复检测结果.txt"
@@ -34,6 +45,8 @@ class Record:
     issue: str
     raw: str
     url: str = ""
+    cycle_id: str = ""
+    target_id: str = ""
 
 
 @dataclass
@@ -95,62 +108,42 @@ def find_input_files(patterns: list[str]) -> list[Path]:
 
 
 def normalize_numbers(numbers: str) -> str:
-    # 不排序，只清理分隔符周围空格，保留原始顺序。
-    numbers = numbers.strip().replace("，", ",").replace("．", ".")
-    numbers = re.sub(r"\s*,\s*", ",", numbers)
-    numbers = re.sub(r"\s*\.\s*", ".", numbers)
-    return numbers
+    return normalize_number_string(numbers)
 
 
-def parse_line(
-    line: str,
-    source_file: str,
-    line_no: int,
-    default_issue: str = "",
-) -> Record | None:
-    raw = line.rstrip("\n")
+def parse_line(line, source_file, line_no, default_issue=None):
+    raw = line.rstrip("\r\n")
     if not raw.strip():
         return None
-
-    explicit = re.match(
-        r"^\s*([0-9０-９,，.．\s]+?)\s+(.+?)\s+(\d+\s*期)\s*$",
-        raw,
-    )
-    if explicit:
-        numbers = normalize_numbers(explicit.group(1))
-        name = re.sub(r"\s+", " ", explicit.group(2).strip())
-        issue = re.sub(r"\s+", "", explicit.group(3))
-        return Record(source_file, line_no, numbers, name, issue, raw)
-
-    if default_issue:
-        implicit = re.match(r"^\s*([0-9０-９,，.．\s]+?)\s+(.+?)\s*$", raw)
-        if implicit:
-            numbers = normalize_numbers(implicit.group(1))
-            name = re.sub(r"\s+", " ", implicit.group(2).strip())
-            return Record(
-                source_file,
-                line_no,
-                numbers,
-                name,
-                f"{issue_key(default_issue)}期",
-                raw,
-            )
-    return None
+    match = re.fullmatch(r"\s*([0-9０-９,，.．、\s]+)\s+([^0-9０-９\s].*?)(?:\s+(\d+\s*期))?\s*", raw)
+    if not match:
+        return None
+    numbers = normalize_numbers(match.group(1))
+    explicit_issue = issue_key(match.group(3)) if match.group(3) else None
+    if explicit_issue and default_issue and explicit_issue != issue_key(default_issue):
+        raise ValueError("行内期号与文件名不一致")
+    issue = explicit_issue or default_issue
+    if not issue:
+        raise ValueError("文件名和记录都缺少期数")
+    return Record(source_file, line_no, numbers, match.group(2).strip(), f"{issue_key(issue)}期", raw)
 
 
-def read_records(files: list[Path]) -> tuple[list[Record], list[str]]:
-    records: list[Record] = []
-    bad_lines: list[str] = []
+def read_records(files):
+    records, bad_lines = [], []
     for path in files:
+        name_match = re.fullmatch(r"(\d+)期-杀数字-成功\.txt", path.name)
+        default_issue = issue_key(name_match.group(1)) if name_match else None
         try:
-            lines = path.read_text(encoding="utf-8-sig").splitlines()
-        except UnicodeDecodeError:
-            lines = path.read_text(encoding="gb18030", errors="ignore").splitlines()
-
-        filename_match = re.match(r"^(\d+)期-杀数字-成功\.txt$", path.name)
-        default_issue = filename_match.group(1) if filename_match else ""
-        for line_no, line in enumerate(lines, start=1):
-            record = parse_line(line, path.name, line_no, default_issue=default_issue)
+            content = path.read_text(encoding="utf-8-sig")
+        except (OSError, UnicodeError) as exc:
+            bad_lines.append(f"{path.name}：读取失败：{exc}")
+            continue
+        for line_no, line in enumerate(content.splitlines(), 1):
+            try:
+                record = parse_line(line, path.name, line_no, default_issue)
+            except ValueError as exc:
+                bad_lines.append(f"{path.name}:{line_no} {exc} {line}")
+                continue
             if record:
                 records.append(record)
             elif line.strip():
@@ -158,15 +151,19 @@ def read_records(files: list[Path]) -> tuple[list[Record], list[str]]:
     return records, bad_lines
 
 
+def record_period(record):
+    return period_key(record.cycle_id, record.issue)
+
+
 def duplicate_groups(records: list[Record]):
     groups: dict[tuple[str, str], list[Record]] = defaultdict(list)
     for record in records:
-        groups[(record.issue, record.numbers)].append(record)
+        groups[(record_period(record), record.numbers)].append(record)
 
     return {
         key: items
         for key, items in groups.items()
-        if len(items) >= 2
+        if len({site_key(item) for item in items}) >= 2
     }
 
 
@@ -178,12 +175,12 @@ def cross_issue_groups(records: list[Record]):
     return {
         numbers: items
         for numbers, items in groups.items()
-        if len({item.issue for item in items}) >= 2
+        if len({record_period(item) for item in items}) >= 2
     }
 
 
 def site_key(record: Record) -> tuple[str, str]:
-    return record.name, record.url
+    return ("id", record.target_id) if record.target_id else (record.name, canonical_url(record.url))
 
 
 def same_site_issue_conflicts(records: list[Record]) -> list[tuple[str, str, str, str, str]]:
@@ -194,7 +191,7 @@ def same_site_issue_conflicts(records: list[Record]) -> list[tuple[str, str, str
         issue = issue_key(record.issue)
         if not issue:
             continue
-        key = (site_key(record), issue)
+        key = (site_key(record), record_period(record))
         previous = values.get(key)
         if previous is not None and previous != record.numbers:
             conflicts.append(
@@ -255,19 +252,19 @@ def status_for_run(length: int) -> str:
 def matching_runs_by_issue(
     left_by_issue: dict[str, str],
     right_by_issue: dict[str, str],
+    cycle_lengths: dict | None = None,
 ) -> list[list[tuple[str, str]]]:
     common_issues = sorted(
         set(left_by_issue) & set(right_by_issue),
-        key=lambda value: int(value),
+        key=period_sort_key,
     )
     runs: list[list[tuple[str, str]]] = []
     current: list[tuple[str, str]] = []
     previous_issue: int | None = None
 
     for issue in common_issues:
-        issue_number = int(issue)
         numbers_match = left_by_issue[issue] == right_by_issue[issue]
-        is_continuous = previous_issue is not None and issue_number == previous_issue + 1
+        is_continuous = previous_issue is not None and are_consecutive(previous_issue, issue, cycle_lengths)
 
         if numbers_match and (not current or is_continuous):
             current.append((issue, left_by_issue[issue]))
@@ -276,14 +273,14 @@ def matching_runs_by_issue(
                 runs.append(current)
             current = [(issue, left_by_issue[issue])] if numbers_match else []
 
-        previous_issue = issue_number
+        previous_issue = issue
 
     if current:
         runs.append(current)
     return runs
 
 
-def site_duplicate_matches(records: list[Record]) -> list[SiteDuplicateMatch]:
+def site_duplicate_matches(records: list[Record], cycle_lengths=None) -> list[SiteDuplicateMatch]:
     conflicts = same_site_issue_conflicts(records)
     if conflicts:
         name, url, issue, first, second = conflicts[0]
@@ -300,20 +297,20 @@ def site_duplicate_matches(records: list[Record]) -> list[SiteDuplicateMatch]:
             continue
         key = site_key(record)
         display[key] = (record.name, record.url)
-        by_site[key][issue] = record.numbers
+        by_site[key][record_period(record)] = record.numbers
 
     matches: list[SiteDuplicateMatch] = []
     sites = sorted(by_site, key=lambda key: (key[0], key[1]))
     for left_index, left_key in enumerate(sites):
         for right_key in sites[left_index + 1:]:
-            runs = matching_runs_by_issue(by_site[left_key], by_site[right_key])
+            runs = matching_runs_by_issue(by_site[left_key], by_site[right_key], cycle_lengths)
             qualifying_runs = [run for run in runs if len(run) >= 3]
             if not qualifying_runs:
                 continue
 
             best_run = max(
                 qualifying_runs,
-                key=lambda run: (len(run), int(run[-1][0])),
+                key=lambda run: (len(run), period_sort_key(run[-1][0])),
             )
             left_name, left_url = display[left_key]
             right_name, right_url = display[right_key]
@@ -358,14 +355,6 @@ def match_url(name: str, targets: list[dict]) -> str:
     if len(exact) == 1:
         return exact[0]
 
-    fuzzy = [
-        target.get("url", "")
-        for target in targets
-        if name and target.get("name") and (name in target["name"] or target["name"] in name)
-    ]
-    if len(fuzzy) == 1:
-        return fuzzy[0]
-
     return ""
 
 
@@ -384,8 +373,11 @@ def parse_issues(raw: str) -> list[str]:
 
 
 def issue_key(value: str) -> str:
-    digits = re.sub(r"\D+", "", str(value))
-    return str(int(digits)) if digits else ""
+    from kill_numbers.text_utils import normalize_issue
+    try:
+        return normalize_issue(value)
+    except (TypeError, ValueError):
+        return ""
 
 
 def default_recent_issues(count: int) -> list[str]:
@@ -481,6 +473,11 @@ def available_issues_for_target(target: dict) -> tuple[str, str, list[str]]:
 
 
 def snapshot_for_target(target: dict) -> TargetSnapshot:
+    with target_policy(target):
+        return _snapshot_for_target(target)
+
+
+def _snapshot_for_target(target: dict) -> TargetSnapshot:
     import crawler
 
     name, documents = fetch_target_content(target)
@@ -546,9 +543,8 @@ def recent_issues_for_snapshot(snapshot: TargetSnapshot, recent_count: int) -> l
     return available[-recent_count:]
 
 
-def recent_count_for_snapshot(snapshot: TargetSnapshot, fallback_recent_count: int) -> int:
-    _ = snapshot
-    # Formal duplicate conclusions always require the configured full window.
+def recent_count_for_snapshot(snapshot, fallback_recent_count):
+    # Historical eight/nine-period exceptions cannot certify a ten-period check.
     return fallback_recent_count
 
 
@@ -631,6 +627,14 @@ def discover_latest_issue(workers: int) -> tuple[str | None, list[CrawlProblem],
 
 
 def records_from_snapshot(snapshot: TargetSnapshot, issues: list[str]) -> tuple[list[Record], CrawlProblem | None]:
+    try:
+        with target_policy(snapshot.target, issues):
+            return _records_from_snapshot(snapshot, issues)
+    except Exception as exc:
+        return [], CrawlProblem(snapshot.name, snapshot.url, str(exc))
+
+
+def _records_from_snapshot(snapshot: TargetSnapshot, issues: list[str]) -> tuple[list[Record], CrawlProblem | None]:
     import crawler
 
     target = snapshot.target
@@ -648,6 +652,8 @@ def records_from_snapshot(snapshot: TargetSnapshot, issues: list[str]) -> tuple[
                 issue=f"{issue_key(result.issue)}期",
                 raw="",
                 url=result.url,
+                cycle_id=cycle_key(target.get("cycle_id")),
+                target_id=target_identity(target),
             )
             for result in accepted
         ], None
@@ -671,6 +677,8 @@ def records_from_snapshot(snapshot: TargetSnapshot, issues: list[str]) -> tuple[
         else snapshot.selected_content
     )
     if issue_map:
+        for issue, numbers in issue_map.items():
+            evidence_from_source_document(target, issue, numbers, selected_document)
         return [
             Record(
                 source_file="实时抓取缓存",
@@ -680,6 +688,8 @@ def records_from_snapshot(snapshot: TargetSnapshot, issues: list[str]) -> tuple[
                 issue=f"{issue}期",
                 raw="",
                 url=snapshot.url,
+                cycle_id=cycle_key(target.get("cycle_id")),
+                target_id=target_identity(target),
             )
             for issue, numbers in issue_map.items()
         ], None
@@ -756,16 +766,6 @@ def records_from_recent_snapshots(
             problems.append(CrawlProblem(snapshot.name, snapshot.url, "本页同栏目没有识别到可用期数"))
             print(f"[{done_count}/{len(snapshots)}] 无数据：{snapshot.url}")
             continue
-        if len(issues) != site_recent_count:
-            problems.append(
-                CrawlProblem(
-                    snapshot.name,
-                    snapshot.url,
-                    f"近{site_recent_count}期数据不足，实际只有{len(issues)}期",
-                )
-            )
-            print(f"[{done_count}/{len(snapshots)}] 数据不足：{snapshot.url}")
-            continue
 
         found, failure = records_from_snapshot(snapshot, issues)
         if found:
@@ -781,197 +781,75 @@ def records_from_recent_snapshots(
 
 
 def cache_site_key(name: str, url: str) -> tuple[str, str]:
-    normalized_url = url.strip().lower()
-    return ("url", normalized_url) if normalized_url else ("name", name.strip())
+    return ("url", url.strip()) if url.strip() else ("name", name.strip())
 
 
-def validate_cache_data(
-    data: object,
-    path: Path,
-    expected_recent_count: int | None = None,
-    targets: list[dict] | None = None,
-) -> list[dict]:
-    if not isinstance(data, dict) or data.get("version") not in {1, 2}:
+def validate_cache_data(data, path, expected_recent_count=None, targets=None):
+    if not isinstance(data, dict) or type(data.get("version")) is not int or data.get("version") not in (1, CACHE_VERSION):
         raise ValueError(f"缓存文件结构或版本错误：{path}")
-    version = int(data["version"])
     if not isinstance(data.get("generated_at"), str) or not data["generated_at"].strip():
-        raise ValueError(f"缓存文件 generated_at 无效：{path}")
-
-    recent_count = data.get("recent_count")
-    if isinstance(recent_count, bool) or not isinstance(recent_count, int) or recent_count <= 0:
-        raise ValueError(f"缓存文件 recent_count 无效：{path}")
-    if expected_recent_count is not None and recent_count != expected_recent_count:
-        raise ValueError(
-            f"缓存文件 recent_count 不匹配：期望 {expected_recent_count}，实际 {recent_count}"
-        )
-
+        raise ValueError("缓存文件 generated_at 无效")
+    count = data.get("recent_count")
+    if type(count) is not int or count <= 0 or (expected_recent_count is not None and count != expected_recent_count):
+        raise ValueError("缓存 recent_count 不匹配或无效")
     records = data.get("records")
     if not isinstance(records, list) or not records:
-        raise ValueError(f"缓存文件 records 缺失或为空：{path}")
-    failure_records = data.get("failures", [])
-    if not isinstance(failure_records, list):
-        raise ValueError(f"缓存文件 failures 格式错误：{path}")
-
-    success_by_key: dict[tuple[tuple[str, str], str], dict] = {}
-    available_sites: set[tuple[str, str]] = set()
-    for index, item in enumerate(records, start=1):
-        if not isinstance(item, dict):
-            raise ValueError(f"缓存文件第 {index} 条记录格式错误：{path}")
-        name = item.get("name")
-        url = item.get("url")
-        numbers = item.get("numbers")
-        issue = issue_key(item.get("issue", ""))
-        if (
-            not isinstance(name, str)
-            or not name.strip()
-            or not isinstance(url, str)
-            or not isinstance(numbers, str)
-            or not normalize_numbers(numbers)
-            or not issue
-        ):
-            raise ValueError(f"缓存文件第 {index} 条记录字段无效：{path}")
-        site = cache_site_key(name, url)
-        key = (site, issue)
-        normalized_numbers = normalize_numbers(numbers)
-        previous = success_by_key.get(key)
-        if previous is not None and normalize_numbers(previous["numbers"]) != normalized_numbers:
-            raise ValueError(f"缓存文件同站同期冲突：{name} {issue}期")
-        success_by_key[key] = item
-        available_sites.add(site)
-
-    failure_by_key: dict[tuple[tuple[str, str], str], dict] = {}
-    for index, item in enumerate(failure_records, start=1):
-        if not isinstance(item, dict):
-            raise ValueError(f"缓存文件第 {index} 条失败状态格式错误：{path}")
-        name = item.get("name")
-        url = item.get("url")
-        issue = issue_key(item.get("issue", ""))
-        status = item.get("status")
-        reason = item.get("reason")
-        if (
-            not isinstance(name, str)
-            or not name.strip()
-            or not isinstance(url, str)
-            or status != "failed"
-            or not isinstance(reason, str)
-            or not reason.strip()
-            or not issue
-            or "numbers" in item
-        ):
-            raise ValueError(f"缓存文件第 {index} 条失败状态无效：{path}")
-        key = (cache_site_key(name, url), issue)
-        failure_by_key[key] = item
-        available_sites.add(key[0])
-
-    overlap = set(success_by_key) & set(failure_by_key)
-    if overlap:
-        raise ValueError(f"缓存文件同站同期同时存在成功和失败：{sorted(overlap)!r}")
-
-    timeline_by_site: dict[tuple[str, str], list[dict]] = defaultdict(list)
-    if version == 2:
-        timeline = data.get("timeline")
-        if not isinstance(timeline, list) or not timeline:
-            raise ValueError(f"缓存版本2缺少 timeline：{path}")
-        seen_periods: set[tuple[tuple[str, str], int, str]] = set()
-        for index, entry in enumerate(timeline, start=1):
-            if not isinstance(entry, dict):
-                raise ValueError(f"缓存 timeline 第 {index} 条无效：{path}")
-            name = entry.get("name")
-            url = entry.get("url")
-            issue = issue_key(entry.get("issue", ""))
-            status = entry.get("status")
-            sequence = entry.get("sequence")
-            cycle = entry.get("cycle")
-            if (
-                not isinstance(name, str)
-                or not name.strip()
-                or not isinstance(url, str)
-                or not issue
-                or status not in {"success", "failed"}
-                or isinstance(sequence, bool)
-                or not isinstance(sequence, int)
-                or sequence <= 0
-                or isinstance(cycle, bool)
-                or not isinstance(cycle, int)
-                or cycle < 0
-            ):
-                raise ValueError(f"缓存 timeline 第 {index} 条字段无效：{path}")
-            site = cache_site_key(name, url)
-            period = (site, cycle, issue)
-            if period in seen_periods:
-                raise ValueError(f"缓存 timeline 同站同期冲突：{name} cycle={cycle} issue={issue}")
-            seen_periods.add(period)
-            payload_key = (site, issue)
-            if status == "success" and payload_key not in success_by_key:
-                raise ValueError(f"缓存 timeline 成功状态缺少号码：{name} {issue}期")
-            if status == "failed" and payload_key not in failure_by_key:
-                raise ValueError(f"缓存 timeline 失败状态缺少原因：{name} {issue}期")
-            timeline_by_site[site].append(entry)
-    elif targets is not None:
-        raise ValueError(f"缓存版本1缺少周期和顺序证据，正式判重前必须重建：{path}")
-
+        raise ValueError("缓存文件 records 缺失或为空")
+    failures = data.get("failures", [])
+    if not isinstance(failures, list):
+        raise ValueError("缓存失败状态格式错误")
+    failure_keys = set()
+    for item in failures:
+        if (not isinstance(item, dict) or not isinstance(item.get("name"), str)
+            or not item["name"].strip() or not isinstance(item.get("url"), str)
+            or not item["url"].strip() or item.get("status") != "failed"
+            or not isinstance(item.get("reason"), str) or not item["reason"].strip()
+            or not issue_key(item.get("issue")) or "numbers" in item):
+            raise ValueError("缓存失败状态无效")
+        failure_keys.add((item.get('target_id') or (item['name'], canonical_url(item['url'])), period_key(item.get("cycle_id"), item["issue"])))
+    values, loaded = {}, []
+    for item in records:
+        if (not isinstance(item, dict) or not isinstance(item.get("name"), str) or not item["name"].strip()
+            or not isinstance(item.get("url"), str) or not item["url"].strip() or not issue_key(item.get("issue"))):
+            raise ValueError("缓存记录字段无效")
+        numbers = normalize_numbers(item.get("numbers"))
+        cycle = cycle_key(item.get("cycle_id"))
+        key = (item.get('target_id') or (item['name'], canonical_url(item['url'])), period_key(cycle, item['issue']))
+        if key in failure_keys:
+            raise ValueError("缓存同站同期同时存在成功和失败")
+        if key in values and values[key] != numbers:
+            raise ValueError("缓存同站同期冲突")
+        if key in values:
+            continue
+        values[key] = numbers
+        loaded.append(Record(str(path), 0, numbers, item['name'], str(item['issue']), '', item['url'], cycle, str(item.get('target_id') or '')))
+    lengths = validate_cycle_lengths(data.get("cycle_lengths", {}))
     if targets is not None:
-        enabled_sites = {
-            cache_site_key(target_name(target), str(target.get("url") or ""))
-            for target in targets
-        }
-        missing = [
-            target_name(target)
-            for target in targets
-            if cache_site_key(target_name(target), str(target.get("url") or "")) not in available_sites
-        ]
-        if missing:
-            raise ValueError(f"缓存文件缺少启用目标：{', '.join(missing)}")
-        unexpected_sites = available_sites - enabled_sites
-        if unexpected_sites:
-            raise ValueError(f"缓存文件包含未启用目标：{sorted(unexpected_sites)!r}")
+        if data['version'] != CACHE_VERSION:
+            raise ValueError("检测未完成：版本1没有周期/配置证据，需要重建版本2缓存")
 
+        sites = data.get('sites', {})
+        if not isinstance(sites, dict):
+            raise ValueError("检测未完成：sites 元数据无效")
         for target in targets:
-            name = target_name(target)
-            url = str(target.get("url") or "")
-            site = cache_site_key(name, url)
-            entries = sorted(
-                timeline_by_site.get(site, []),
-                key=lambda entry: int(entry["sequence"]),
-            )
-            if len(entries) != recent_count:
-                raise ValueError(
-                    f"缓存文件 {name} 近{recent_count}期不完整：实际 {len(entries)} 期"
-                )
-            if any(entry["status"] != "success" for entry in entries):
-                raise ValueError(f"缓存文件 {name} 近{recent_count}期含失败状态，检测未完成")
-
-            expected_count = target.get("count")
-            previous_issue: int | None = None
-            previous_cycle: int | None = None
-            for entry in entries:
-                issue = issue_key(entry["issue"])
-                record = success_by_key[(site, issue)]
-                tokens = re.findall(r"\d{1,2}", normalize_numbers(record["numbers"]))
-                if expected_count and len(tokens) != expected_count:
-                    raise ValueError(
-                        f"缓存文件 {name} {issue}期号码数量 {len(tokens)}，配置要求 {expected_count}"
-                    )
-                if any(not 1 <= int(token) <= 49 for token in tokens):
-                    raise ValueError(f"缓存文件 {name} {issue}期包含01至49以外号码")
-                if not target.get("allow_duplicate_numbers", False) and len(tokens) != len(set(tokens)):
-                    raise ValueError(f"缓存文件 {name} {issue}期号码重复")
-
-                current_issue = int(issue)
-                current_cycle = int(entry["cycle"])
-                if previous_issue is not None:
-                    normal_next = current_cycle == previous_cycle and current_issue == previous_issue + 1
-                    wrapped_next = (
-                        current_cycle == previous_cycle + 1
-                        and previous_issue >= 360
-                        and current_issue <= 5
-                    )
-                    if not normal_next and not wrapped_next:
-                        raise ValueError(
-                            f"缓存文件 {name} 期号不连续：{previous_issue}期 -> {current_issue}期"
-                        )
-                previous_issue = current_issue
-                previous_cycle = current_cycle
+            meta = sites.get(target_identity(target), {})
+            if not isinstance(meta, dict) or meta.get('contract_hash') != target_signature(target):
+                raise ValueError(f"检测未完成：{target.get('name')} 缓存配置证据缺失或过期")
+            latest = meta.get('latest_period')
+            if not latest:
+                raise ValueError('检测未完成：缺少每站最新期证据')
+            expected = set(recent_periods(latest, 10, lengths))
+            relevant_failures = [f for f in failures if f.get('target_id') == target_identity(target)
+                and (period_key(f.get('cycle_id'), f['issue']) in expected
+                     or period_sort_key(period_key(f.get('cycle_id'), f['issue'])) > period_sort_key(latest))]
+            if relevant_failures:
+                raise ValueError('检测未完成：要求范围内或较新期存在失败状态')
+            if meta.get('cycle_verified') is not True:
+                raise ValueError(f"检测未完成：{target.get('name')} 周期未确认")
+        reasons = completeness_reasons(loaded, targets, count, cycle_lengths=lengths,
+            latest_by_site={url: meta['latest_period'] for url, meta in sites.items() if isinstance(meta,dict) and meta.get('latest_period')})
+        if reasons:
+            raise ValueError('检测未完成：'+'；'.join(f'{name} {reason}' for name,_url,reason in reasons))
     return records
 
 
@@ -989,55 +867,30 @@ def write_records_cache(
     if region_problems:
         raise ValueError(f"存在 {len(region_problems)} 个 region 配置异常，拒绝覆盖正式缓存")
 
-    payload_records = [
-        {
-            "name": record.name,
-            "url": record.url,
-            "issue": issue_key(record.issue),
-            "numbers": record.numbers,
-        }
-        for record in records
-    ]
-    by_site: dict[tuple[str, str], list[dict]] = defaultdict(list)
-    for record in payload_records:
-        by_site[cache_site_key(record["name"], record["url"])].append(record)
-
-    timeline: list[dict] = []
-    sequence = 0
-    for site_records in by_site.values():
-        cycle = 0
-        previous_issue: int | None = None
-        for record in site_records:
-            current_issue = int(issue_key(record["issue"]))
-            if previous_issue is not None and previous_issue - current_issue >= 100:
-                cycle += 1
-            elif previous_issue is not None and current_issue < previous_issue:
-                raise ValueError(
-                    f"{record['name']} 期号顺序无法确认：{previous_issue}期 -> {current_issue}期"
-                )
-            sequence += 1
-            timeline.append(
-                {
-                    "name": record["name"],
-                    "url": record["url"],
-                    "issue": record["issue"],
-                    "status": "success",
-                    "sequence": sequence,
-                    "cycle": cycle,
-                }
-            )
-            previous_issue = current_issue
-
     data = {
-        "version": 2,
+        "version": CACHE_VERSION,
         "generated_at": datetime.now().isoformat(timespec="seconds"),
+        "sites": {target_identity(t): {'contract_hash': target_signature(t),
+            'cycle_verified': bool(t.get('cycle_id')), 'cycle_id': cycle_key(t.get('cycle_id')),
+            'latest_period': max((record_period(r) for r in records if r.target_id == target_identity(t)), key=period_sort_key, default='') }
+            for t in (targets or [])},
+        "cycle_lengths": {k: v for t in (targets or []) for k, v in t.get('cycle_lengths', {}).items()},
         "recent_count": recent_count,
-        "run_sequence": sequence,
-        "records": payload_records,
+        "records": [
+            {
+                "name": record.name,
+                "url": record.url,
+                "issue": issue_key(record.issue),
+                "numbers": record.numbers,
+                "cycle_id": record.cycle_id,
+                "target_id": record.target_id,
+            }
+            for record in records
+        ],
         "failures": [],
-        "timeline": timeline,
     }
     validate_cache_data(data, path, expected_recent_count=recent_count, targets=targets)
+
     atomic_write_json(path, data, trailing_newline=False)
 
 
@@ -1066,6 +919,8 @@ def load_records_cache(
                 issue=f"{issue}期",
                 raw="",
                 url=str(item.get("url") or ""),
+                cycle_id=cycle_key(item.get("cycle_id")),
+                target_id=str(item.get("target_id") or ""),
             )
         )
     return loaded
@@ -1110,6 +965,8 @@ def records_from_crawler(issues: list[str], workers: int) -> tuple[list[Record],
                         issue=f"{item.issue}期",
                         raw="",
                         url=item.url,
+                        cycle_id=cycle_key(target.get("cycle_id")),
+                        target_id=target_identity(target),
                     )
                 )
             print(f"[{done_count}/{len(targets)}] 成功：{url} ({len(found)} 条)")
@@ -1121,95 +978,15 @@ def records_from_crawler(issues: list[str], workers: int) -> tuple[list[Record],
     return records, problems
 
 
-def write_report(
-    output: Path,
-    files: list[Path],
-    records: list[Record],
-    duplicates: dict[tuple[str, str], list[Record]],
-    cross_duplicates: dict[str, list[Record]],
-    bad_lines: list[str],
-    problems: list[CrawlProblem],
-    issues: list[str] | None = None,
-) -> None:
-    lines: list[str] = []
-    lines.append("重复检测结果")
-    lines.append("")
-    lines.append("判断规则：原始号码顺序完全一致 = 重复；不自动排序。")
-    if issues:
-        lines.append(f"检测期数：{', '.join(issue + '期' for issue in issues)}")
-        lines.append("数据来源：实时抓取 crawler.py 里的全部目标")
-    else:
-        lines.append(f"读取文件：{', '.join(path.name for path in files) if files else '无'}")
-    lines.append(f"读取记录：{len(records)} 条")
-    lines.append(f"同一期重复组数：{len(duplicates)} 组")
-    lines.append(f"跨期重复组数：{len(cross_duplicates)} 组")
-    if problems:
-        lines.append(f"抓取/识别异常：{len(problems)} 个")
-    lines.append("")
-
-    lines.append("一、同一期重复")
-    lines.append("")
-    if duplicates:
-        for index, ((issue, numbers), items) in enumerate(
-            sorted(duplicates.items(), key=lambda item: (int(item[0][0].replace("期", "")), item[0][1])),
-            start=1,
-        ):
-            lines.append(f"{index}. {issue} 重复号码：{numbers}")
-            for item in items:
-                location = f"{item.source_file}:{item.line_no}" if item.line_no else item.source_file
-                lines.append(f"   - {item.name} ({location})")
-                lines.append(f"     网址：{item.url or '未匹配到'}")
-            lines.append("")
-    else:
-        lines.append("没有发现重复。")
-        lines.append("")
-
-    lines.append("二、跨期重复")
-    lines.append("")
-    if cross_duplicates:
-        for index, (numbers, items) in enumerate(
-            sorted(
-                cross_duplicates.items(),
-                key=lambda item: (
-                    min(int(record.issue.replace("期", "")) for record in item[1]),
-                    item[0],
-                ),
-            ),
-            start=1,
-        ):
-            issue_text = ", ".join(sorted({item.issue for item in items}, key=lambda value: int(value.replace("期", ""))))
-            lines.append(f"{index}. 跨期重复号码：{numbers}")
-            lines.append(f"   出现期数：{issue_text}")
-            for item in sorted(items, key=lambda value: (int(value.issue.replace("期", "")), value.name)):
-                location = f"{item.source_file}:{item.line_no}" if item.line_no else item.source_file
-                lines.append(f"   - {item.issue} {item.name} ({location})")
-                lines.append(f"     网址：{item.url or '未匹配到'}")
-            lines.append("")
-    else:
-        lines.append("没有发现跨期重复。")
-        lines.append("")
-
-    if problems:
-        lines.append("三、抓取/识别异常")
-        lines.append("")
-        for item in problems:
-            lines.append(f"- {item.name}")
-            lines.append(f"  网址：{item.url}")
-            lines.append(f"  原因：{item.reason}")
-        lines.append("")
-
-    if bad_lines:
-        lines.append("四、未识别行")
-        lines.append("")
-        for item in bad_lines:
-           lines.append(f"   - {item}")
-
-    atomic_write_text(output, "\n".join(lines))
+def write_report(output, files, records, duplicates, cross_duplicates, bad_lines, problems, issues=None):
+    """Legacy API is diagnostic only; use the same fail-closed report writer."""
+    problems = list(problems) + [CrawlProblem('全部目标', '', '旧报告入口没有完整性证明，检测未完成')]
+    write_report_v2(output, files, records, duplicates, cross_duplicates, [], bad_lines, problems, issues=issues)
 
 
-def format_issue(value: str) -> str:
-    key = issue_key(value)
-    return f"{key}期" if key else str(value)
+def format_issue(issue: str) -> str:
+    cycle, value = split_period(issue)
+    return f"{cycle}周期/{value}期" if cycle else f"{value}期"
 
 
 def site_match_status_label(status: str) -> str:
@@ -1220,305 +997,127 @@ def site_match_status_label(status: str) -> str:
     return "不处理"
 
 
-def write_report_v2(
-    output: Path,
-    files: list[Path],
-    records: list[Record],
-    duplicates: dict[tuple[str, str], list[Record]],
-    cross_duplicates: dict[str, list[Record]],
-    site_matches: list[SiteDuplicateMatch],
-    bad_lines: list[str],
-    problems: list[CrawlProblem],
-    region_problems: list[RegionProblem] | None = None,
-    issues: list[str] | None = None,
-    latest_issue: str | None = None,
-) -> None:
-    region_problems = region_problems or []
-    complete = not problems and not region_problems and not bad_lines
-    lines: list[str] = []
-    lines.append(f"检测状态：{'完整' if complete else '检测未完成'}")
-    lines.append("重复检测结果")
-    lines.append("")
-    lines.append("判断规则：同一期内，原始号码整串顺序完全一致 = 重复；不自动排序；不检测部分相同。")
-    if issues:
-        if latest_issue:
-            lines.append(f"自动识别全站参考最大期：{latest_issue}期")
-        lines.append(f"检测期数：{', '.join(format_issue(issue) for issue in issues)}")
-        lines.append("数据来源：先从所有站点实际抓取数据；每个站点按自己的 region 判断最新期，再取该站点近10期。")
-    else:
-        lines.append(f"读取文件：{', '.join(path.name for path in files) if files else '无'}")
-    lines.append(f"读取记录：{len(records)} 条")
-    lines.append(f"同一期重复组数：{len(duplicates)} 组")
-    lines.append(f"跨期重复组数：{len(cross_duplicates)} 组")
-    lines.append(f"新增网站连续重复风险：{len(site_matches)} 组")
-    if region_problems:
-        lines.append(f"region 配置异常：{len(region_problems)} 个")
-    if problems:
-        lines.append(f"抓取/识别异常：{len(problems)} 个")
-    lines.append("")
-
-    lines.append("新增网站连续重复判断")
-    lines.append("")
-    lines.append("规则：按双方共同拥有的具体期号对齐比较；期号连续且号码整串一致才累计。连续1-2期不处理，连续3-5期疑似重复，连续6期或以上直接拒收。")
-    lines.append("")
-    if site_matches:
-        for index, item in enumerate(site_matches, start=1):
-            lines.append(f"{index}. {site_match_status_label(item.status)}：连续 {item.max_run_length} 期一致")
-            lines.append(f"   网站A：{item.name_a}")
-            lines.append(f"   网址A：{item.url_a or '未匹配到'}")
-            lines.append(f"   网站B：{item.name_b}")
-            lines.append(f"   网址B：{item.url_b or '未匹配到'}")
-            lines.append(f"   连续期数：{', '.join(format_issue(issue) for issue in item.issues)}")
-            for issue, numbers in item.numbers_by_issue:
-                lines.append(f"   - {format_issue(issue)}：{numbers}")
-            lines.append("")
-    else:
-        lines.append(
-            "没有发现达到连续3期以上的同网站重复风险。"
-            if complete
-            else "检测未完成，不能得出无重复结论。"
-        )
+def write_report_v2(output, files, records, duplicates, cross_duplicates, site_matches,
+                    bad_lines, problems, region_problems=None, issues=None, latest_issue=None,
+                    status=None):
+    status = status or status_for_detection(problems, region_problems, bad_lines, records, site_matches)
+    lines = ["重复检测结果", f"检测状态：{status.value}",
+             "规则：相同周期、相同期号、原始号码整串顺序相同才累计；连续3-5期疑似，6期及以上拒收。",
+             f"有效读取记录：{len(records)} 条", ""]
+    if status == DetectionStatus.INCOMPLETE:
+        lines += ["检测未完成，本轮不生成准入结论。以下局部匹配只作为核查线索。", ""]
+    elif status == DetectionStatus.CLEAN:
+        lines += ["所有启用目标已通过连续近10期完整性校验；未达到连续3期重复门槛。", ""]
+    for item in site_matches:
+        lines += [f"{'拒收证据' if item.status == 'reject' else '疑似证据'}：{item.name_a} / {item.name_b} 连续 {item.max_run_length} 期",
+                  f"网址A：{item.url_a}", f"网址B：{item.url_b}"]
+        lines += [f"  {format_issue(issue)}：{numbers}" for issue,numbers in item.numbers_by_issue]
         lines.append("")
-
-    lines.append("一、同一期重复")
-    lines.append("")
     if duplicates:
-        for index, ((issue, numbers), items) in enumerate(
-            sorted(duplicates.items(), key=lambda item: (int(issue_key(item[0][0]) or 0), item[0][1])),
-            start=1,
-        ):
-            lines.append(f"{index}. {format_issue(issue)} 重复号码：{numbers}")
-            for item in items:
-                location = f"{item.source_file}:{item.line_no}" if item.line_no else item.source_file
-                lines.append(f"   - {item.name} ({location})")
-                lines.append(f"     网址：{item.url or '未匹配到'}")
-            lines.append("")
-    else:
-        lines.append(
-            "没有发现同一期整串重复。"
-            if complete
-            else "检测未完成，不能得出同一期无重复结论。"
-        )
-        lines.append("")
-
-    lines.append("二、跨期重复")
-    lines.append("")
+        lines.append("已读取数据中的同期整串匹配：")
+        for (issue, numbers), items in sorted(duplicates.items(), key=lambda item:period_sort_key(item[0][0])):
+            lines.append(f"{format_issue(issue)} {numbers}："+'、'.join(item.name for item in items))
     if cross_duplicates:
-        for index, (numbers, items) in enumerate(
-            sorted(
-                cross_duplicates.items(),
-                key=lambda item: (
-                    min(int(issue_key(record.issue) or 0) for record in item[1]),
-                    item[0],
-                ),
-            ),
-            start=1,
-        ):
-            issue_text = ", ".join(
-                sorted({format_issue(item.issue) for item in items}, key=lambda value: int(issue_key(value) or 0))
-            )
-            lines.append(f"{index}. 跨期重复号码：{numbers}")
-            lines.append(f"   出现期数：{issue_text}")
-            for item in sorted(items, key=lambda value: (int(issue_key(value.issue) or 0), value.name)):
-                location = f"{item.source_file}:{item.line_no}" if item.line_no else item.source_file
-                lines.append(f"   - {format_issue(item.issue)} {item.name} ({location})")
-                lines.append(f"     网址：{item.url or '未匹配到'}")
-            lines.append("")
-    else:
-        lines.append(
-            "没有发现跨期整串重复。"
-            if complete
-            else "检测未完成，不能得出跨期无重复结论。"
-        )
-        lines.append("")
-
-    section_no = 3
-    if region_problems:
-        lines.append(f"{section_no}、region 配置异常")
-        lines.append("")
-        for item in region_problems:
-            lines.append(f"- {item.name}")
-            lines.append(f"  网址：{item.url}")
-            lines.append(f"  region：{item.region or '未配置'}")
-            lines.append(f"  原因：{item.reason}")
-        lines.append("")
-        section_no += 1
-
-    if problems:
-        lines.append(f"{section_no}、抓取/识别异常")
-        lines.append("")
-        lines.append("说明：这些站点本次没有参与完整重复检测，需要人工按目录/调试文件审核。")
-        for item in problems:
-            lines.append(f"- {item.name}")
-            lines.append(f"  网址：{item.url or '无'}")
-            lines.append(f"  原因：{item.reason}")
-        lines.append("")
-        section_no += 1
-
-    if bad_lines:
-        lines.append(f"{section_no}、未识别行")
-        lines.append("")
-        for item in bad_lines:
-            lines.append(f"   - {item}")
-
-    atomic_write_text(output, "\n".join(lines))
+        lines += ["", f"跨期整串匹配：{len(cross_duplicates)} 组（不直接作为同期拒收依据）"]
+    if problems or region_problems or bad_lines:
+        lines += ["", "未完成原因："]
+        lines += [f"{item.name} {item.url}：{item.reason}" for item in [*(problems or []),*(region_problems or [])]]
+        lines += [f"未识别行：{line}" for line in bad_lines]
+    atomic_write_text(output, "\n".join(lines)+"\n")
 
 
 def _main_unlocked() -> int:
-    parser = argparse.ArgumentParser(description="多期检测原始号码重复，不自动排序")
-    parser.add_argument(
-        "files",
-        nargs="*",
-        help="可指定文件；指定文件时只读文件，不实时抓取",
-    )
-    parser.add_argument("--issues", help="指定检测期数，例如：119,120,121")
-    parser.add_argument("--latest", help="指定最新期；程序按 --recent 自动往前取近几期，例如 158 会取 149-158")
-    parser.add_argument("--recent", type=int, default=DEFAULT_RECENT, help="不指定 --issues 时，默认从 crawler.py 默认期数往前取几期")
-    parser.add_argument("--workers", type=int, default=DEFAULT_WORKERS, help="实时抓取并发数，默认 8 个网站")
-    parser.add_argument("--from-files", action="store_true", help="不实时抓取，读取 *期成功.txt 和 results.txt")
-    parser.add_argument("--from-cache", action="store_true", help="不实时抓全站，读取最近10期缓存 JSON")
-    parser.add_argument("--write-cache", action="store_true", help="实时抓取后覆盖写入最近10期缓存 JSON")
-    parser.add_argument("--cache", default=DEFAULT_CACHE, help="最近10期缓存 JSON 文件名")
-    parser.add_argument("--output", default=DEFAULT_OUTPUT, help="输出报告文件名")
+    import crawler
+    parser = argparse.ArgumentParser(description="完整近10期判重；资料不足只能报告检测未完成")
+    parser.add_argument("files", nargs="*")
+    parser.add_argument("--issues")
+    parser.add_argument("--latest")
+    parser.add_argument("--recent", type=int, default=10)
+    parser.add_argument("--workers", type=int, default=8)
+    modes = parser.add_mutually_exclusive_group()
+    modes.add_argument("--from-files", action="store_true")
+    modes.add_argument("--from-cache", action="store_true")
+    parser.add_argument("--write-cache", action="store_true")
+    parser.add_argument("--cache", default=str(crawler.CACHE_FILE))
+    parser.add_argument("--output", default=str(crawler.SCRIPT_DIR / DEFAULT_OUTPUT))
+    parser.add_argument("--cycle-id", default=os.environ.get("SHUZI_CYCLE_ID", ""))
     args = parser.parse_args()
-
-    files: list[Path] = []
-    bad_lines: list[str] = []
-    problems: list[CrawlProblem] = []
-    region_problems: list[RegionProblem] = []
-    issues: list[str] | None = None
-    latest_issue: str | None = None
-
-    if args.from_cache:
-        import crawler
-
-        cache_path = Path(args.cache)
-        targets = list(getattr(crawler, "TARGETS", []))
-        records = load_records_cache(cache_path, args.recent, targets)
-        issues = sorted({issue_key(record.issue) for record in records if issue_key(record.issue)}, key=lambda value: int(value))
-        latest_issue = str(max(int(issue) for issue in issues)) if issues else None
-    elif args.files or args.from_files:
-        files = [Path(item) for item in args.files] if args.files else find_input_files(["*期成功.txt"])
-        records, bad_lines = read_records(files)
-        add_urls(records)
-        if args.issues:
-            issues = parse_issues(args.issues)
-            records = filter_records_by_issues(records, issues)
-            latest_issue = str(max(int(issue) for issue in issues)) if issues else None
-            problems.extend(multi_issue_completeness_problems(records, issues))
-    else:
-        if args.issues and args.latest:
-            parser.error("--issues 和 --latest 只能二选一")
-        if args.latest and args.write_cache:
-            parser.error("--latest 使用全局期数，禁止据此覆盖正式缓存；请不带 --latest 运行按站点检测")
-        if args.issues or args.latest:
-            import crawler
-
-            if args.latest:
-                latest_issue = issue_key(args.latest)
-                issues = recent_issues_from_latest(args.latest, args.recent)
-            else:
+    if args.issues and args.latest:
+        parser.error("--issues 和 --latest 只能二选一")
+    if args.recent < 1 or args.workers < 1:
+        parser.error("recent 和 workers 必须是正整数")
+    if args.from_cache and (args.files or args.write_cache or args.issues or args.latest):
+        parser.error("缓存读取不能与文件、期数或写缓存模式混用")
+    try:
+        cycle = cycle_key(args.cycle_id)
+    except ValueError as exc:
+        parser.error(str(exc))
+    targets = [{**t, **({'cycle_id': cycle} if cycle else {})} for t in crawler.load_targets()]
+    original_targets = crawler.TARGETS
+    crawler.TARGETS = targets
+    records, files, bad_lines, problems = [], [], [], []
+    region_problems = region_config_problems(targets)
+    issues, latest_issue = None, None
+    lengths = {}
+    try:
+        if args.from_cache:
+            cache_path = Path(args.cache)
+            records = load_records_cache(cache_path, args.recent, targets)
+            cache_data = json.loads(cache_path.read_text(encoding="utf-8-sig"))
+            lengths = validate_cycle_lengths(cache_data.get('cycle_lengths', {}))
+            health_path = getattr(crawler, 'CACHE_STATE_FILE', None)
+            if health_path and Path(health_path).exists():
+                health = json.loads(Path(health_path).read_text(encoding='utf-8'))
+                if not isinstance(health, dict) or health.get('cache_updated') is not True:
+                    problems.append(CrawlProblem('全部目标', '', '最近单期运行未完成缓存同步，不能把旧缓存当成本轮状态'))
+        elif args.files or args.from_files:
+            files = [Path(f) for f in args.files] if args.files else sorted(crawler.RESULTS_DIR.glob('*期-杀数字-成功.txt'))
+            records, bad_lines = read_records(files)
+            add_urls(records)
+            for record in records:
+                record.cycle_id = cycle
+            if args.issues:
                 issues = parse_issues(args.issues)
-                latest_issue = str(max(int(issue) for issue in issues)) if issues else None
-            region_problems = region_config_problems(list(getattr(crawler, "TARGETS", [])))
+                records = filter_records_by_issues(records, issues)
+        elif args.issues or args.latest:
+            issues = parse_issues(args.issues) if args.issues else recent_issues_from_latest(args.latest, args.recent)
             records, problems = records_from_crawler(issues, args.workers)
-            conflicts = record_conflict_problems(records)
-            problems.extend(conflicts)
-            problems.extend(multi_issue_completeness_problems(records, issues))
-            if args.write_cache and not problems:
-                write_records_cache(
-                    Path(args.cache),
-                    records,
-                    issues,
-                    args.recent,
-                    problems=problems,
-                    region_problems=region_problems,
-                    targets=list(getattr(crawler, "TARGETS", [])),
-                )
+            problems.append(CrawlProblem('全部目标', '', '统一指定期数仅供诊断，未证明各站点自己的最新期'))
         else:
             snapshots, discovery_problems, region_problems, latest_issue = fetch_target_snapshots(args.workers)
             problems.extend(discovery_problems)
-            if latest_issue:
-                records, crawl_problems, issues = records_from_recent_snapshots(snapshots, args.recent)
-                problems.extend(crawl_problems)
-                conflicts = record_conflict_problems(records)
-                problems.extend(conflicts)
-                if args.issues:
-                    problems.extend(multi_issue_completeness_problems(records, issues))
-                if args.write_cache and not problems:
-                    import crawler
-
-                    write_records_cache(
-                        Path(args.cache),
-                        records,
-                        issues,
-                        args.recent,
-                        problems=problems,
-                        region_problems=region_problems,
-                        targets=list(getattr(crawler, "TARGETS", [])),
-                    )
-            else:
-                issues = []
-                records = []
-
+            records, crawl_problems, issues = records_from_recent_snapshots(snapshots, args.recent)
+            problems.extend(crawl_problems)
+    except (OSError, ValueError, RuntimeError) as exc:
+        problems.append(CrawlProblem('检测入口', '', str(exc)))
+    finally:
+        crawler.TARGETS = original_targets
+    problems.extend(CrawlProblem(*r) for r in completeness_reasons(records, targets, args.recent, cycle_lengths=lengths))
     conflicts = record_conflict_problems(records)
-    for conflict in conflicts:
-        if not any(
-            item.name == conflict.name
-            and item.url == conflict.url
-            and item.reason == conflict.reason
-            for item in problems
-        ):
-            problems.append(conflict)
-
-    if args.issues:
-        for problem in multi_issue_completeness_problems(records, issues):
-            if not any(
-                item.name == problem.name
-                and item.url == problem.url
-                and item.reason == problem.reason
-                for item in problems
-            ):
-                problems.append(problem)
-
+    problems.extend(conflicts)
     duplicates = duplicate_groups(records)
     cross_duplicates = cross_issue_groups(records)
-    site_matches = [] if conflicts else site_duplicate_matches(records)
-    write_report_v2(
-        Path(args.output),
-        files,
-        records,
-        duplicates,
-        cross_duplicates,
-        site_matches,
-        bad_lines,
-        problems,
-        region_problems,
-        issues,
-        latest_issue,
-    )
-
-    print(f"完成：读取 {len(records)} 条，连续重复风险 {len(site_matches)} 组，同期重复 {len(duplicates)} 组，跨期重复 {len(cross_duplicates)} 组")
-    print(f"报告：{args.output}")
-    if problems or region_problems or bad_lines:
-        return 4
-    if any(item.status == "reject" for item in site_matches):
-        return 6
-    if any(item.status == "suspect" for item in site_matches):
-        return 5
-    return 0
+    matches = [] if conflicts else site_duplicate_matches(records, lengths)
+    status = status_for_detection(problems, region_problems, bad_lines, records, matches)
+    if args.write_cache and status != DetectionStatus.INCOMPLETE:
+        try:
+            write_records_cache(Path(args.cache), records, issues or [], args.recent, targets=targets)
+        except (OSError, ValueError) as exc:
+            problems.append(CrawlProblem('缓存更新', '', str(exc)))
+            status = DetectionStatus.INCOMPLETE
+    write_report_v2(Path(args.output), files, records, duplicates, cross_duplicates, matches,
+                    bad_lines, problems, region_problems, issues, latest_issue, status=status)
+    print(f"{status.value}：读取 {len(records)} 条，匹配风险 {len(matches)} 组；报告：{args.output}")
+    return EXIT_CODES[status]
 
 
 def main() -> int:
     try:
         with exclusive_run_lock(Path(__file__).resolve().parent / ".crawler-and-duplicates.lock"):
             return _main_unlocked()
-    except RuntimeError as exc:
+    except (RuntimeError, OSError, ValueError) as exc:
         print(str(exc))
         return 2
-    except (OSError, ValueError) as exc:
-        print(f"检测未完成：{exc}")
-        return 4
 
 
 if __name__ == "__main__":

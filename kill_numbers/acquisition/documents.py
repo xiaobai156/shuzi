@@ -1,4 +1,6 @@
 import hashlib
+from contextvars import copy_context
+from kill_numbers.acquisition.policy import CURRENT_POLICY
 import re
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
@@ -151,7 +153,7 @@ def _embedded_documents(
                 parent_url=page_url,
                 content=value,
                 priority=inline_priority,
-                metadata={"parseable": True},
+                metadata={"parseable": bool(re.search(r"document\.write(?:ln)?\s*\(", value))},
             )
         )
     return documents
@@ -188,7 +190,7 @@ def discover_static_documents(url: str) -> tuple[str, list[SourceDocument]]:
         workers = min(max(SCRIPT_WORKERS, 1), len(child_requests))
         with ThreadPoolExecutor(max_workers=workers) as executor:
             future_map = {
-                executor.submit(fetch_child, request): request
+                executor.submit(copy_context().run, fetch_child, request): request
                 for request in child_requests
             }
             for future in as_completed(future_map):
@@ -211,7 +213,9 @@ def discover_static_documents(url: str) -> tuple[str, list[SourceDocument]]:
                     parent_url=page_url,
                     content=content,
                     priority=70,
-                    metadata={"parseable": True, "page_region": page_region},
+                    metadata={"parseable": bool(re.search(r"document\.write(?:ln)?\s*\(", content))
+                        or bool(CURRENT_POLICY.get().source_url_pattern and re.search(CURRENT_POLICY.get().source_url_pattern, child_url, re.I)),
+                        "page_region": page_region},
                 )
             )
             decoded_values = decode_strdecode_payloads(content)

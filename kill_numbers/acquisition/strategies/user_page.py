@@ -87,6 +87,8 @@ def crawl_user_documents(
                     metadata={
                         "parseable": True,
                         "user_id": user_id,
+                        "identity_verified": True,
+                        "identity_source": profile_url,
                         "page_index": page_index,
                         "item_index": item_index,
                         "item_id": item_id,

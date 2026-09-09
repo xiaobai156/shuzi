@@ -1,5 +1,7 @@
 import argparse
 import os
+import uuid
+from dataclasses import replace
 import re
 import sys
 import time
@@ -86,6 +88,9 @@ from kill_numbers.text_utils import (
 from kill_numbers.parsing.common import (
     BROAD_KEYWORD_MARKERS,
     CANDIDATE_REGION_WINDOW,
+    resolve_candidate_window,
+    candidate_rows,
+    windowed_rows,
     all_issue_segment_matches,
     candidate_anchor_values,
     extract_issue_numbers,
@@ -102,7 +107,6 @@ from kill_numbers.parsing.common import (
     iter_all_issue_segment_matches,
     needs_strict_region_window,
     normalize_region,
-    resolve_candidate_window,
     scope_text_by_anchor,
     scope_text_by_anchor_with_offset,
     select_candidate,
@@ -150,6 +154,7 @@ from kill_numbers.parsing.registry import (
     parse_target_content,
 )
 from kill_numbers.validation.result_validator import validate_issue_map
+from kill_numbers.parsing.source_scope import target_for_document
 from kill_numbers.application.crawl_service import (
     CrawlBatchProgress,
     CrawlDependencies,
@@ -164,7 +169,9 @@ from kill_numbers.infrastructure.debug_repository import (
     safe_filename as storage_safe_filename,
     save_debug_page as save_debug_page_storage,
 )
-from kill_numbers.infrastructure.file_store import atomic_write_text
+from kill_numbers.infrastructure.file_store import atomic_write_text, atomic_write_json
+from kill_numbers.infrastructure.run_manifest import write_run_manifest
+from kill_numbers.domain.periods import cycle_key, canonical_url, validate_cycle_lengths, target_identity
 from kill_numbers.infrastructure.output_repository import (
     backup_existing_outputs as backup_outputs_storage,
     cleanup_old_backups as cleanup_old_backups_storage,
@@ -177,7 +184,7 @@ from kill_numbers.infrastructure.target_repository import read_target_data, writ
 # 默认期数：你也可以运行时用 --issues 119 或 --issues 119,120 指定。
 DEFAULT_ISSUES = "128"
 DEFAULT_WORKERS = 8
-DEFAULT_RETRY_PASSES = 2
+DEFAULT_RETRY_PASSES = 1
 RETRY_PASS_WAIT = 12
 NO_ISSUE_MARKERS = (
     "没有找到指定期数",
@@ -192,12 +199,14 @@ BACKUP_KEEP = 10
 SCRIPT_DIR = Path(__file__).resolve().parent
 TARGETS_FILE = SCRIPT_DIR / "targets.json"
 DEBUG_DIR = SCRIPT_DIR / "debug_pages"
-RESULTS_DIR = Path(
-    os.environ.get(
-        "SHUZI_RESULTS_DIR",
-        r"C:\Users\Administrator\Desktop\每天工具\爬虫合集\大围杀号生肖数据统一归纳",
-    )
-).expanduser()
+DEFAULT_RESULTS_DIR = Path(r"C:\Users\Administrator\Desktop\每天工具\爬虫合集\大围杀号生肖数据统一归纳")
+RESULTS_DIR = Path(os.environ.get("SHUZI_RESULTS_DIR", str(DEFAULT_RESULTS_DIR))).expanduser()
+CACHE_STATE_FILE = SCRIPT_DIR / ".cache-state.json"
+
+
+def manifest_path_for_issue(issue):
+    return RESULTS_DIR / f"{normalize_issue(issue)}期-杀数字-运行.json"
+
 
 
 def configure_output_encoding() -> None:
@@ -215,7 +224,7 @@ CACHE_FILE = SCRIPT_DIR / "recent_10_cache.json"
 CACHE_UPDATE_FAILED_EXIT_CODE = 3
 CACHE_SUCCESS_RATE_THRESHOLD_PERCENT = 85
 VALID_TARGET_REGIONS = {"top", "bottom", "上", "下", "顶部", "尾部", "底部"}
-# name 留空会自动取：用户页昵称 / 作者 / 标题里的名称。
+# 正式目标必须有明确名称；自动作者信息只作为来源证据。
 def load_targets(path: Path = TARGETS_FILE) -> list[dict]:
     if not path.exists():
         raise FileNotFoundError(f"目标配置文件不存在：{path}")
@@ -234,31 +243,35 @@ def load_targets(path: Path = TARGETS_FILE) -> list[dict]:
             raise ValueError(
                 f"targets.json 第 {index} 条必须配置合法 region：top/bottom/上/下/顶部/尾部"
             )
+        resolve_candidate_window(item.get("issue_position_window"))
+        if special_parser in {"zuibaxian_top7", "fengwu_jiutian_bottom_10"} and item.get("issue_position_window", 3) != 3:
+            raise ValueError("该专属解析器固定要求三条窗口，不能配置其他值")
+        hosts = item.get("allowed_resource_hosts", [])
+        if not isinstance(hosts, list) or any(not isinstance(host, str) or not re.fullmatch(r"[A-Za-z0-9.-]+", host) for host in hosts):
+            raise ValueError("allowed_resource_hosts 必须是明确主机名列表，不能含URL或通配符")
+        if "browser_ready_selector" in item and not isinstance(item["browser_ready_selector"], str):
+            raise ValueError("browser_ready_selector 必须是字符串")
+        for flag in ("disabled", "allow_ambiguous", "allow_duplicate_numbers", "browser_fallback", "insecure_tls"):
+            if flag in item and type(item[flag]) is not bool:
+                raise ValueError(f"targets.json 第 {index} 条 {flag} 必须是布尔值")
+        for field in ("anchor", "stop_anchor"):
+            value = item.get(field)
+            if value is not None and not (isinstance(value, str) or
+                    isinstance(value, list) and all(isinstance(v, str) and v.strip() for v in value)):
+                raise ValueError(f"targets.json 第 {index} 条 {field} 格式错误")
+        if item.get("source_url_pattern"):
+            re.compile(item["source_url_pattern"])
+        if item.get("cycle_id"):
+            cycle_key(item["cycle_id"])
+        if "cycle_lengths" in item:
+            validate_cycle_lengths(item["cycle_lengths"])
+        if urlparse(item["url"]).scheme not in {"http", "https"}:
+            raise ValueError(f"targets.json 第 {index} 条 URL 只允许 http/https")
+        if not isinstance(item.get("name"), str) or not item["name"].strip():
+            raise ValueError(f"targets.json 第 {index} 条必须配置明确 name")
         count = item.get("count")
-        if count is not None and (not isinstance(count, int) or isinstance(count, bool) or count <= 0):
+        if not isinstance(count, int) or isinstance(count, bool) or count <= 0:
             raise ValueError(f"targets.json 第 {index} 条 count 必须是正整数")
-        issue_window = item.get("issue_position_window")
-        if issue_window is not None and (
-            isinstance(issue_window, bool)
-            or not isinstance(issue_window, int)
-            or issue_window <= 0
-        ):
-            raise ValueError(
-                f"targets.json 第 {index} 条 issue_position_window 必须是正整数"
-            )
-        position = item.get("position", "first")
-        if position not in {"first", "last"}:
-            raise ValueError(f"targets.json 第 {index} 条 position 只能是 first/last")
-        for boolean_field in (
-            "allow_ambiguous",
-            "allow_duplicate_numbers",
-            "disabled",
-            "browser_fallback",
-        ):
-            if boolean_field in item and not isinstance(item[boolean_field], bool):
-                raise ValueError(
-                    f"targets.json 第 {index} 条 {boolean_field} 必须是布尔值"
-                )
         keywords = item.get("keywords")
         if keywords is not None and (
             not isinstance(keywords, list)
@@ -399,7 +412,14 @@ def load_targets(path: Path = TARGETS_FILE) -> list[dict]:
                     f"targets.json 第 {index} 条 qiancai_liangde_bottom_10 必须配置 "
                     "bottom、count=10、钱彩两得专属身份/边界、gb18030"
                 )
-    return [item for item in data if not item.get("disabled")]
+    active = [item for item in data if not item.get("disabled")]
+    for field in ("name",):
+        values = [canonical_url(item[field]) if field == "url" else item[field].strip() for item in active]
+        if len(set(values)) != len(values):
+            raise ValueError(f"启用目标 {field} 不唯一，不能安全关联 TXT/缓存")
+    if len({target_identity(t) for t in active}) != len(active):
+        raise ValueError("启用目标栏目身份不唯一")
+    return active
 
 
 def save_targets(targets: list[dict], path: Path = TARGETS_FILE) -> None:
@@ -569,33 +589,16 @@ def crawl_zuojianzifu_link_chain(
         issue: str,
         *keywords: str,
     ) -> tuple[str, str]:
-        parseable = parseable_documents(documents)
-        priorities = sorted(
-            {document.priority for document in parseable},
-            reverse=True,
-        )
-        for priority in priorities:
-            matches = []
-            for document in (
-                item for item in parseable if item.priority == priority
-            ):
-                try:
-                    link = exact_issue_link(
-                        topic_links(document.content),
-                        issue,
-                        *keywords,
-                    )
-                except ValueError:
-                    continue
-                if link not in matches:
-                    matches.append(link)
-            if len(matches) > 1:
-                raise ValueError(
-                    f"{normalize_issue(issue)}期专属链接候选冲突"
-                )
-            if matches:
-                return matches[0]
-        raise ValueError(f"{normalize_issue(issue)}期专属链接不唯一或不存在")
+        matches = {}
+        issue_pattern = re.compile(rf"(?<!\d)0?{re.escape(normalize_issue(issue))}\s*期(?!\d)")
+        for document in parseable_documents(documents):
+            for href, label in topic_links(document.content):
+                if issue_pattern.search(label) and all(keyword in label for keyword in keywords):
+                    absolute = urljoin(document.url, href)
+                    matches[absolute] = label
+        if len(matches) != 1:
+            raise ValueError(f"{normalize_issue(issue)}期专属链接候选冲突或不存在")
+        return next(iter(matches.items()))
 
     _listing_name, listing_documents = discover_static_documents(target["url"])
     article_links = [
@@ -684,7 +687,7 @@ def crawl_ttss_paginated_identity_top_10(
                     rf"(?<!\d)0?{re.escape(requested_issue)}\s*期(?!\d)"
                 )
                 matches = [
-                    href
+                    urljoin(document.url, href)
                     for href, label in links
                     if issue_pattern.search(label)
                     and all(keyword in normalize_keyword(label) for keyword in link_keywords)
@@ -697,7 +700,7 @@ def crawl_ttss_paginated_identity_top_10(
                 issue_link_candidates[requested_issue].extend(distinct_matches)
 
             next_candidates.extend(
-                href
+                urljoin(document.url, href)
                 for href, label in links
                 if label.strip() == next_text
             )
@@ -898,46 +901,44 @@ def _document_conflict_error(
     )
 
 
-def _directional_parseable_documents(
-    documents: list[SourceDocument],
-    target: dict,
-) -> list[SourceDocument]:
-    """Apply top/bottom to document sequences such as user forum topics."""
+def _directional_parseable_documents(documents, target):
+    """Rank valid rows across a user-post sequence without joining its documents."""
     parseable = parseable_documents(documents)
-    groups: dict[str, list[SourceDocument]] = {}
+    sequences = {}
+    ordinary = []
     for document in parseable:
         sequence = document.metadata.get("region_sequence")
         index = document.metadata.get("region_index")
-        if sequence is None or not isinstance(index, int):
-            continue
-        groups.setdefault(str(sequence), []).append(document)
-
-    if not groups:
+        if sequence and type(index) is int:
+            sequences.setdefault(sequence, []).append(document)
+        else:
+            ordinary.append(document)
+    if not sequences:
         return parseable
-
-    region = normalize_region(target.get("region"))
-    window = resolve_candidate_window(target.get("issue_position_window"))
-    selected_ids: set[int] = set()
-    for group in groups.values():
-        ordered = sorted(
-            group,
-            key=lambda document: int(document.metadata["region_index"]),
-        )
-        selected = (
-            ordered[:window]
-            if region == "top"
-            else ordered[-window:]
-            if region == "bottom"
-            else ordered
-        )
-        selected_ids.update(id(document) for document in selected)
-
-    return [
-        document
-        for document in parseable
-        if not document.metadata.get("region_sequence")
-        or id(document) in selected_ids
-    ]
+    result = list(ordinary)
+    for group in sequences.values():
+        rows = []
+        for document in sorted(group, key=lambda doc: doc.metadata["region_index"]):
+            effective = target_for_document(target, document)
+            try:
+                section, _ = scope_text_by_anchor_with_offset(
+                    html_to_text(document.content), effective.get("anchor"), effective.get("stop_anchor"))
+            except ValueError:
+                continue
+            for row in candidate_rows(section, effective.get("keywords"), effective.get("count"),
+                                      effective.get("allow_duplicate_numbers", False)):
+                rows.append((document, row))
+        selected = windowed_rows(rows, target.get("region"), target.get("issue_position_window"))
+        ranks = {}
+        for rank, (document, row) in enumerate(selected):
+            ranks.setdefault(id(document), {})[row.start] = rank
+        for document in group:
+            if id(document) in ranks:
+                result.append(replace(document, metadata={**document.metadata,
+                    "allowed_row_starts": list(ranks[id(document)]),
+                    "row_ranks": ranks[id(document)],
+                    "selected_row_count": len(selected)}))
+    return result
 
 
 def parse_target_documents(
@@ -979,14 +980,7 @@ def parse_target_documents(
         for document in (
             item for item in parseable if item.priority == priority
         ):
-            document_target = target
-            if (
-                document.identity
-                and normalize_keyword(document.identity)
-                == normalize_keyword(str(target.get("anchor") or ""))
-            ):
-                document_target = dict(target)
-                document_target["anchor"] = ""
+            document_target = target_for_document(target, document)
             try:
                 issue_map = parse_target_content(
                     document.content,
@@ -1118,16 +1112,7 @@ def fetch_target_documents(
     if parse_user_id(url):
         return crawl_user_documents(url, fetch_json_value=fetch_json)
 
-    name, documents = discover_static_documents(url)
-    if (
-        target.get("browser_fallback") is True
-        or contract_is_split_across_documents(documents, target)
-    ):
-        try:
-            documents.extend(render_page_documents(url))
-        except Exception:
-            pass
-    return name, documents
+    return discover_static_documents(url)
 
 
 def available_issues_for_documents(
@@ -1147,18 +1132,7 @@ def available_issues_for_documents(
     for priority in priorities:
         candidates = []
         for document in (item for item in parseable if item.priority == priority):
-            document_target = target
-            source_anchor = str(target.get("source_anchor") or "").strip()
-            if source_anchor:
-                document_target = dict(target)
-                document_target["anchor"] = source_anchor
-            elif (
-                document.identity
-                and normalize_keyword(document.identity)
-                == normalize_keyword(str(target.get("anchor") or ""))
-            ):
-                document_target = dict(target)
-                document_target["anchor"] = ""
+            document_target = target_for_document(target, document)
             try:
                 available = available_issues_from_content(
                     document.content,
@@ -1325,13 +1299,14 @@ def update_recent_duplicate_cache(
     issues: list[str],
     recent_count: int = 10,
     failures: list[CrawlFailure] | None = None,
+    *, targets=None, cycle_id=None, cycle_lengths=None,
 ) -> None:
     update_recent_cache_storage(
         cache_path,
         results,
         issues,
         recent_count,
-        failures=failures,
+        failures=failures, targets=targets, cycle_id=cycle_id, cycle_lengths=cycle_lengths,
     )
 
 
@@ -1340,6 +1315,7 @@ def persist_cache_after_realtime_result(
     results: list[CrawlResult],
     failures: list[CrawlFailure],
     issues: list[str],
+    *, targets=None, cycle_id=None, cycle_lengths=None,
 ) -> str | None:
     """Persist cache after realtime outputs are finalized without changing them."""
     try:
@@ -1348,7 +1324,7 @@ def persist_cache_after_realtime_result(
             results,
             issues,
             recent_count=10,
-            failures=failures,
+            failures=failures, targets=targets, cycle_id=cycle_id, cycle_lengths=cycle_lengths,
         )
     except Exception as exc:
         return str(exc)
@@ -1503,7 +1479,7 @@ def _main_unlocked() -> int:
     parser.add_argument(
         "--issues",
         default=DEFAULT_ISSUES,
-        help="指定期数，多个用逗号分隔，例如：119 或 119,120",
+        help="指定单一期数，例如119；多个期数请使用多期入口",
     )
     parser.add_argument(
         "--workers",
@@ -1515,28 +1491,56 @@ def _main_unlocked() -> int:
         "--retry-passes",
         type=int,
         default=DEFAULT_RETRY_PASSES,
-        help="网络失败后的慢速补抓轮数，默认 2；设为 0 可关闭",
+        help="网络失败后的慢速补抓轮数，默认 1；设为 0 可关闭",
     )
     parser.add_argument(
         "--no-cache-update",
         action="store_true",
         help="不更新 recent_10_cache.json；多期独立抓取专用",
     )
+    parser.add_argument("--run-id", default=None)
+    parser.add_argument("--manifest", default=None)
+    parser.add_argument("--cycle-id", default=os.environ.get("SHUZI_CYCLE_ID", ""))
+    parser.add_argument("--previous-cycle-length", type=int, default=None)
     args = parser.parse_args()
-    skip_output_backup = "--issues" in sys.argv[1:]
-    issues = parse_issues(args.issues)
+    skip_output_backup = any(arg == "--issues" or arg.startswith("--issues=") for arg in sys.argv[1:])
+    try:
+        issues = parse_issues(args.issues)
+        cycle = cycle_key(args.cycle_id)
+        lengths = {}
+        if args.previous_cycle_length is not None:
+            if not cycle or int(cycle) <= 1:
+                raise ValueError("上一周期长度必须同时提供明确的 --cycle-id")
+            lengths = validate_cycle_lengths({str(int(cycle)-1): args.previous_cycle_length})
+    except (TypeError, ValueError) as exc:
+        parser.error(str(exc))
+    if len(issues) > 1:
+        parser.error("正式单期入口只允许一个期数，请使用多期入口逐期执行")
+    if args.workers <= 0 or args.retry_passes < 0:
+        parser.error("workers 必须为正整数，retry-passes 不能为负数")
     if not issues:
         print("请指定期数，例如：python crawler.py --issues 119")
         return 2
-    if len(issues) != 1:
-        print("正式 crawler.py 每次只允许一个期数；多个期数请使用多期入口逐期执行。")
-        return 2
-
-    print(f"正式输出目录：{RESULTS_DIR}")
 
     # Risk checks belong to the formal target pipeline.  This entrypoint must
     # not fetch risky sites twice or mutate targets.json during a run.
-    active_targets = TARGETS
+    active_targets = [{**target, **({'cycle_id': cycle} if cycle else {})} for target in TARGETS]
+    for target in active_targets:
+        if target.get('insecure_tls'):
+            print(f"来源可信度降级：{target['name']} 显式关闭TLS证书验证")
+        for cycle_name, count in validate_cycle_lengths(target.get('cycle_lengths', {})).items():
+            if cycle_name in lengths and lengths[cycle_name] != count:
+                parser.error("同一周期的期数上限存在配置冲突")
+            lengths[cycle_name] = count
+    if not active_targets:
+        parser.error("没有启用的抓取目标")
+    run_id = args.run_id or uuid.uuid4().hex
+    manifest_file = Path(args.manifest) if args.manifest else manifest_path_for_issue(issues[0])
+    if not args.no_cache_update:
+        atomic_write_json(CACHE_STATE_FILE, {'run_id': run_id, 'cache_updated': False, 'status': 'running'})
+    print(f"正式输出目录：{RESULTS_DIR}")
+    if not cycle:
+        print("周期未指定：实时抓取照常进行；缓存观察值不能用于正式跨周期判重。")
     blocked_failures: list[CrawlFailure] = []
     blocked_urls: set[str] = set()
     crawl_target_items = [
@@ -1642,6 +1646,8 @@ def _main_unlocked() -> int:
         stats,
         skip_backup=skip_output_backup,
     )
+    write_run_manifest(manifest_file, run_id, issues[0], results, failures,
+                       active_targets, result_file, failed_file)
     cache_error = None
     cache_updated = False
     if args.no_cache_update or len(issues) > 1:
@@ -1666,8 +1672,15 @@ def _main_unlocked() -> int:
                 results,
                 failures,
                 issues,
+                targets=active_targets, cycle_id=cycle, cycle_lengths=lengths,
             )
             cache_updated = cache_error is None
+    if not args.no_cache_update:
+        try:
+            atomic_write_json(CACHE_STATE_FILE, {'run_id': run_id, 'cache_updated': cache_updated,
+                              'status': 'finished', 'cache_error': cache_error})
+        except OSError as exc:
+            cache_error = cache_error or f"缓存同步状态写入失败：{exc}"
     if cache_error:
         print(f"{CACHE_FILE.name}：缓存更新未完成：{cache_error}")
     elif cache_updated:
@@ -1690,9 +1703,12 @@ def main() -> int:
     try:
         with exclusive_run_lock(SCRIPT_DIR / ".crawler-and-duplicates.lock"):
             return _main_unlocked()
-    except RuntimeError as exc:
+    except (RuntimeError, OSError) as exc:
         print(str(exc))
         return 2
+    finally:
+        from kill_numbers.acquisition.browser_pool import close_browser_pool
+        close_browser_pool()
 
 
 if __name__ == "__main__":

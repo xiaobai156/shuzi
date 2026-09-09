@@ -32,6 +32,7 @@ def test_http_404_is_not_retried(monkeypatch):
         calls.append(request.full_url)
         raise HTTPError(request.full_url, 404, "Not Found", None, None)
 
+    monkeypatch.setattr(http_client, "validate_request_url", lambda _url: None)
     monkeypatch.setattr(http_client, "urlopen", fail_404)
     monkeypatch.setattr(http_client, "wait_for_host_slot", lambda _url: None)
 

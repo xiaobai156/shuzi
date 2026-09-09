@@ -55,7 +55,6 @@ def test_formal_parser_matches_isolated_parser_for_cycle_fixture():
     assert crawler.extract_top_article_history_current_cycle_numbers(
         content, ["207", "208", "209"], target
     ) == {
-        "207": ["26", "11", "35", "14", "32", "37", "06", "46"],
         "208": ["12", "04", "42", "10", "36", "11", "43", "20"],
         "209": ["06", "19", "08", "05", "36", "38", "25", "16"],
     }
@@ -69,12 +68,12 @@ def test_formal_parser_missing_issue_is_not_invented():
     assert found == {}
 
 
-def test_neighbor_issues_stay_in_their_actual_cycle():
+def test_neighbor_issue_from_legacy_cycle_is_never_used():
     found = validator.extract_buke_article_history_numbers(
         load_fixture_content(), ["207", "209"], load_top_target()
     )
 
-    assert found["207"] == ["26", "11", "35", "14", "32", "37", "06", "46"]
+    assert "207" not in found
     assert found["209"] == ["06", "19", "08", "05", "36", "38", "25", "16"]
 
 

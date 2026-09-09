@@ -59,7 +59,7 @@ def test_invalid_token_invalidates_entire_number_group():
 
 
 def test_configured_stop_anchor_is_required():
-    with pytest.raises(ValueError, match="没有找到结束锚点"):
+    with pytest.raises(ValueError, match="没有找到(?:正文)?结束锚点"):
         extract_issue_numbers(
             "栏目起点\n211期 专属栏目 01 02 03",
             ["211"],
@@ -86,7 +86,7 @@ def test_evidence_cannot_fall_back_to_whole_document_when_anchor_is_missing():
         content="211期 专属栏目 01 02 03",
         priority=100,
     )
-    with pytest.raises(ValueError, match="来源锚点"):
+    with pytest.raises(ValueError, match="(?:来源|正文)锚点"):
         evidence_from_source_document(target, "211", ["01", "02", "03"], document)
 
 
@@ -208,7 +208,7 @@ def test_cache_success_clears_old_failure_and_same_run_conflict_is_rejected(tmp_
     assert data["failures"] == []
     assert data["records"][0]["numbers"] == "01,02,03"
 
-    with pytest.raises(ValueError, match="同时返回成功和失败"):
+    with pytest.raises(ValueError, match="同时(?:返回|存在)成功和失败"):
         update_recent_duplicate_cache(
             path,
             [CrawlResult("https://a.test", "站点A", "212", ["01", "02", "03"])],
@@ -218,45 +218,16 @@ def test_cache_success_clears_old_failure_and_same_run_conflict_is_rejected(tmp_
 
 
 def test_formal_cache_validation_requires_full_ten_periods(tmp_path):
+    # Build valid explicit-cycle metadata, then test the missing tenth period.
     path = tmp_path / "cache.json"
-    records = [
-        {"name": "站点A", "url": "https://a.test", "issue": str(issue), "numbers": "01,02,03"}
-        for issue in range(203, 212)
-    ]
-    timeline = [
-        {
-            "name": "站点A",
-            "url": "https://a.test",
-            "issue": str(issue),
-            "status": "success",
-            "sequence": index,
-            "cycle": 0,
-        }
-        for index, issue in enumerate(range(203, 212), start=1)
-    ]
-    data = {
-        "version": 2,
-        "generated_at": "2026-09-09T00:00:00",
-        "recent_count": 10,
-        "run_sequence": 9,
-        "records": records,
-        "failures": [],
-        "timeline": timeline,
-    }
+    target = {"name": "站点A", "url": "https://a.test", "count": 3, "region": "top", "cycle_id": "2026"}
+    for issue in range(203, 212):
+        update_recent_duplicate_cache(path,
+            [CrawlResult(target["url"], target["name"], str(issue), ["01", "02", "03"])],
+            [str(issue)], targets=[target])
+    data = json.loads(path.read_text(encoding="utf-8"))
     with pytest.raises(ValueError, match="近10期不完整"):
-        check_duplicates.validate_cache_data(
-            data,
-            path,
-            expected_recent_count=10,
-            targets=[
-                {
-                    "name": "站点A",
-                    "url": "https://a.test",
-                    "count": 3,
-                    "region": "top",
-                }
-            ],
-        )
+        check_duplicates.validate_cache_data(data, path, expected_recent_count=10, targets=[target])
 
 
 def test_current_success_file_format_uses_issue_from_filename(tmp_path):
@@ -272,3 +243,32 @@ def test_current_success_file_format_uses_issue_from_filename(tmp_path):
 def test_single_prompt_rejects_multiple_issues():
     with pytest.raises(ValueError, match="单期入口只允许一个期数"):
         run_crawler_prompt.crawler_command_for_input("211,212")
+
+
+def test_legacy_timeline_does_not_create_verified_cycle(tmp_path):
+    path = tmp_path / "cache.json"
+    target = {"name": "站点A", "url": "https://a.test", "count": 3, "region": "top"}
+    path.write_text(json.dumps({"version": 2, "generated_at": "2026-09-09", "recent_count": 10,
+        "run_sequence": 1, "records": [{"name": target["name"], "url": target["url"], "issue": "211", "numbers": "01,02,03"}],
+        "failures": [], "timeline": [{"name": target["name"], "url": target["url"], "issue": "211", "status": "success", "sequence": 1, "cycle": 0}]}), encoding="utf-8")
+    update_recent_duplicate_cache(path, [CrawlResult(target["url"], target["name"], "212", ["04", "05", "06"])], ["212"], targets=[target])
+    data = json.loads(path.read_text(encoding="utf-8"))
+    assert {r["issue"] for r in data["records"]} == {"211", "212"}
+    assert all(not r.get("cycle_id") for r in data["records"])
+    with pytest.raises(ValueError, match="检测未完成"):
+        check_duplicates.validate_cache_data(data, path, expected_recent_count=10, targets=[target])
+
+
+@pytest.mark.parametrize("value, expected", [("1", 1), ("2", 2), ("4", 4)])
+def test_browser_concurrency_environment_is_retained(monkeypatch, value, expected):
+    from kill_numbers.acquisition.browser_pool import configured_browser_workers
+    monkeypatch.setenv("SHUZI_BROWSER_CONCURRENCY", value)
+    assert configured_browser_workers() == expected
+
+
+@pytest.mark.parametrize("value", ["0", "5", "many"])
+def test_browser_concurrency_environment_rejects_invalid_values(monkeypatch, value):
+    from kill_numbers.acquisition.browser_pool import configured_browser_workers
+    monkeypatch.setenv("SHUZI_BROWSER_CONCURRENCY", value)
+    with pytest.raises(ValueError, match="SHUZI_BROWSER_CONCURRENCY"):
+        configured_browser_workers()

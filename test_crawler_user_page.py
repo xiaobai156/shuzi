@@ -64,7 +64,7 @@ def test_top_window_conflict_still_fails_closed():
         )
 
 
-def test_direction_window_honors_explicit_configured_size():
+def test_direction_window_honors_configured_thirty_rows():
     text = "条纹妇人\n" + "\n".join(issue_row(issue) for issue in range(210, 204, -1))
 
     assert crawler.extract_issue_numbers(
@@ -75,7 +75,7 @@ def test_direction_window_honors_explicit_configured_size():
         anchor="条纹妇人",
         region="top",
         issue_position_window=30,
-    ) == {"207": ["01", "02", "03", "04", "05", "06", "07", "08", "09", "10"]}
+    ) == {"207": NUMBERS.split(".")}
     assert crawler.extract_issue_numbers(
         text,
         ["208"],
@@ -84,7 +84,7 @@ def test_direction_window_honors_explicit_configured_size():
         anchor="条纹妇人",
         region="bottom",
         issue_position_window=30,
-    ) == {"208": ["01", "02", "03", "04", "05", "06", "07", "08", "09", "10"]}
+    ) == {"208": NUMBERS.split(".")}
 
 
 def test_top_user_page_extracts_once_after_a_forum_page(monkeypatch):

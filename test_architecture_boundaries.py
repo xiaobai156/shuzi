@@ -23,7 +23,8 @@ def imported_entry_modules(path: Path) -> set[str]:
 
 def test_formal_single_target_pipeline_lives_in_application_not_legacy_entry():
     entry_source = inspect.getsource(crawler.crawl_one)
-    service_source = inspect.getsource(crawl_service.run_formal_crawl_target)
+    service_source = inspect.getsource(crawl_service._run_formal_crawl_target)
+    assert "target_policy" in inspect.getsource(crawl_service.run_formal_crawl_target)
 
     assert "run_formal_crawl_target" in entry_source
     assert "parse_target_content" not in entry_source
