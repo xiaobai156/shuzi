@@ -1,0 +1,123 @@
+name: Verify reviewed repair snapshot
+
+on:
+  push:
+    branches: ['fix/accuracy-review-20260909']
+    paths: ['.github/workflows/apply-reviewed-fix.yml']
+
+permissions:
+  contents: read
+
+jobs:
+  verify-and-publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    env:
+      PYTHONUTF8: '1'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Reconstruct and verify exact reviewed source
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: python
+        run: |
+          import base64, hashlib, json, lzma, os, pathlib, subprocess, urllib.request
+          repo = 'xiaobai156/shuzi'
+          base = '0b6b4216c29f34921819b128791f8b9cc92d6ac8'
+          expected = '4c7df31d3943446a78580d2789aefc3cdb1139d3'
+          parts = ['8adc81b020daffcec24b131d764573026aa051a1', '500bdab2fe5c48878ba5977d5edc45ff9814d316', 'bbb2bb3182c602c7d0ff697408f172019fe94b39', '399bf8dfcedcd013bb48870ea4d6ab528ea6f9f4', 'fe3faabbc75648ff71c6c50506d7fddbdd40661b']
+          chunks = []
+          for sha in parts:
+              request = urllib.request.Request(f'https://api.github.com/repos/{repo}/git/blobs/{sha}', headers={'Authorization': 'Bearer ' + os.environ['GH_TOKEN'], 'Accept': 'application/vnd.github+json'})
+              with urllib.request.urlopen(request, timeout=30) as response:
+                  value = json.load(response)
+              assert value['sha'] == sha and value['encoding'] == 'base64'
+              chunks.append(base64.b64decode(value['content']))
+          compressed = base64.b64decode(b''.join(chunks), validate=True)
+          assert hashlib.sha256(compressed).hexdigest() == '39a5f03c8a754e12a5615ca0ec669dd9aaeca81474d6b36b2c8061de428c77a6'
+          raw = lzma.decompress(compressed)
+          assert hashlib.sha256(raw).hexdigest() == '1fd29f7b01bd3eda13dc76fba3ca6479775b435903ac21a87827e326fcd9dcfc'
+          recipe = json.loads(raw)
+          assert recipe['base'] == base and recipe['tree'] == expected
+          subprocess.run(['git', 'merge-base', '--is-ancestor', base, 'HEAD'], check=True)
+          for entry in recipe['files']:
+              path = pathlib.Path(entry['path'])
+              assert not path.is_absolute() and '..' not in path.parts and '.git' not in path.parts
+              if 'content' in entry:
+                  content = entry['content']
+              else:
+                  old = subprocess.check_output(['git', 'show', f"{base}:{entry['path']}"])
+                  assert hashlib.sha256(old).hexdigest() == entry['old_sha256'], entry['path']
+                  lines = old.decode('utf-8').splitlines(keepends=True)
+                  for start, end, replacement in reversed(entry['edits']):
+                      lines[start:end] = [replacement]
+                  content = ''.join(lines)
+              data = content.encode('utf-8')
+              path.parent.mkdir(parents=True, exist_ok=True)
+              path.write_bytes(data)
+              sha = subprocess.check_output(['git', 'hash-object', '-w', '--stdin'], input=data).decode().strip()
+              subprocess.run(['git', 'update-index', '--add', '--cacheinfo', '100644', sha, str(path)], check=True)
+          temporary = '.github/workflows/apply-reviewed-fix.yml'
+          subprocess.run(['git', 'update-index', '--force-remove', temporary], check=True)
+          pathlib.Path(temporary).unlink()
+          actual = subprocess.check_output(['git', 'write-tree']).decode().strip()
+          assert actual == expected, (actual, expected)
+          subprocess.run(['git', 'archive', '--format=zip', expected, '-o', 'repaired-source.zip'], check=True)
+          print('Verified exact reviewed tree:', actual)
+      - name: Install test dependencies
+        run: python -m pip install -r requirements-test.txt
+      - name: Compile and run regression suite
+        run: |
+          python -m compileall -q crawler.py check_duplicates.py retry_failed.py run_crawler_multi_prompt.py kill_numbers
+          python -m pytest -q --junitxml=pytest-results.xml
+      - name: Install real browser
+        run: |
+          python -m pip install playwright
+          python -m playwright install --with-deps chromium
+      - name: Real Chromium isolated local-page test
+        env:
+          RUN_BROWSER_SMOKE: '1'
+        run: python -m pytest -q tests/test_browser_smoke.py --junitxml=browser-results.xml
+      - name: Publish tested code to review branch only
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: python
+        run: |
+          import base64, json, os, pathlib, subprocess
+          base = '0b6b4216c29f34921819b128791f8b9cc92d6ac8'
+          expected = '4c7df31d3943446a78580d2789aefc3cdb1139d3'
+          assert subprocess.check_output(['git', 'write-tree']).decode().strip() == expected
+          # Publish source without changing workflow permissions with the job token.
+          # The connected user will restore the verified workflow and trigger matrix CI.
+          workflow = '.github/workflows/tests.yml'
+          original = subprocess.check_output(['git', 'rev-parse', f'{base}:{workflow}']).decode().strip()
+          subprocess.run(['git', 'update-index', '--cacheinfo', '100644', original, workflow], check=True)
+          code_tree = subprocess.check_output(['git', 'write-tree']).decode().strip()
+          env = dict(os.environ, GIT_AUTHOR_NAME='github-actions[bot]', GIT_AUTHOR_EMAIL='41898282+github-actions[bot]@users.noreply.github.com', GIT_COMMITTER_NAME='github-actions[bot]', GIT_COMMITTER_EMAIL='41898282+github-actions[bot]@users.noreply.github.com')
+          commit = subprocess.check_output(['git', 'commit-tree', code_tree, '-p', base, '-m', 'fix: enforce parsing provenance, per-site cache and fail-closed reports'], env=env).decode().strip()
+          auth = base64.b64encode(('x-access-token:' + os.environ['GH_TOKEN']).encode()).decode()
+          result = subprocess.run(['git', '-c', 'http.https://github.com/.extraheader=AUTHORIZATION: basic ' + auth, 'push', 'origin', commit + ':refs/heads/fix/accuracy-tested-20260909'])
+          if result.returncode:
+              raise SystemExit('Unable to publish tested branch; main was not changed')
+          value = {'commit': commit, 'code_tree': code_tree, 'verified_tree': expected, 'branch': 'fix/accuracy-tested-20260909'}
+          pathlib.Path('publication.json').write_text(json.dumps(value, indent=2), encoding='utf-8')
+          print(json.dumps(value))
+      - name: Upload verification evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: reviewed-repair-evidence
+          path: |
+            repaired-source.zip
+            publication.json
+            pytest-results.xml
+            browser-results.xml
+          retention-days: 7
