@@ -1,0 +1,110 @@
+name: Diagnose remaining 25 live sources
+
+on:
+  push:
+    branches:
+      - diag/remaining25-20260910
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      PYTHONUTF8: '1'
+      SHUZI_BROWSER_CONCURRENCY: '2'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: diag/remaining25-20260910
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install browser support
+        run: |
+          python -m pip install playwright
+          python -m playwright install --with-deps chromium
+      - name: Diagnose exact remaining failures
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json
+          import traceback
+          from pathlib import Path
+          import crawler
+          from kill_numbers.acquisition.policy import target_policy
+          from kill_numbers.acquisition.documents import document_debug_text
+
+          names = [
+              '湖心小筑','六合绝杀十码','文武双全','至富财运','冰雨蝴蝶','福星金牌','金宝神皇',
+              '博彩兵书','寿比南山','弦无虚发','港澳爆庄','迎着尾王','一诺千金','雨过天晴',
+              '狙杀十码','花和尚','新竹论坛','凌晨交界','醉八仙','过眼云烟','好料见证',
+              '你来关注','春蚓秋蛇','钱彩两得','实至名归'
+          ]
+          targets = {t['name']: t for t in crawler.load_targets()}
+          root = Path('diag-remaining25')
+          root.mkdir(exist_ok=True)
+
+          def save_docs(path, docs):
+              path.mkdir(parents=True, exist_ok=True)
+              (path/'documents.txt').write_text(document_debug_text(docs), encoding='utf-8')
+              meta=[]
+              for d in docs:
+                  meta.append({
+                      'kind': d.kind, 'url': d.url, 'parent_url': d.parent_url,
+                      'priority': d.priority, 'metadata': d.metadata,
+                      'content_len': len(d.content),
+                  })
+              (path/'meta.json').write_text(json.dumps(meta, ensure_ascii=False, indent=2), encoding='utf-8')
+
+          summary=[]
+          for idx,name in enumerate(names,1):
+              target=targets[name]
+              d=root/f'{idx:02d}-{name}'
+              d.mkdir(exist_ok=True)
+              (d/'target.json').write_text(json.dumps(target, ensure_ascii=False, indent=2), encoding='utf-8')
+              rec={'name':name,'url':target.get('url'),'special_parser':target.get('special_parser')}
+              try:
+                  with target_policy(target,['252']):
+                      page_name, docs = crawler.fetch_target_documents(target,['252'])
+                  rec['fetch_name']=page_name
+                  rec['fetch_ok']=True
+                  save_docs(d/'formal', docs)
+                  try:
+                      found, selected = crawler.parse_target_documents(docs, target, ['252'])
+                      rec['parse_ok']=True
+                      rec['found']=found
+                      rec['selected']=None if selected is None else {
+                          'kind':selected.kind,'url':selected.url,'priority':selected.priority,'metadata':selected.metadata
+                      }
+                  except Exception as exc:
+                      rec['parse_ok']=False
+                      rec['parse_error']=f'{type(exc).__name__}: {exc}'
+                      (d/'parse_error.txt').write_text(traceback.format_exc(),encoding='utf-8')
+              except Exception as exc:
+                  rec['fetch_ok']=False
+                  rec['fetch_error']=f'{type(exc).__name__}: {exc}'
+                  (d/'fetch_error.txt').write_text(traceback.format_exc(),encoding='utf-8')
+                  # Best-effort raw acquisition from configured URL, for evidence only.
+                  try:
+                      with target_policy(target,['252']):
+                          raw_name, raw_docs = crawler.discover_static_documents(str(target['url']))
+                      rec['raw_name']=raw_name
+                      rec['raw_ok']=True
+                      save_docs(d/'raw', raw_docs)
+                  except Exception as raw_exc:
+                      rec['raw_ok']=False
+                      rec['raw_error']=f'{type(raw_exc).__name__}: {raw_exc}'
+                      (d/'raw_error.txt').write_text(traceback.format_exc(),encoding='utf-8')
+              summary.append(rec)
+              print(json.dumps(rec, ensure_ascii=False))
+
+          (root/'summary.json').write_text(json.dumps(summary, ensure_ascii=False, indent=2), encoding='utf-8')
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: remaining25-diagnostics
+          path: diag-remaining25
+          retention-days: 7
