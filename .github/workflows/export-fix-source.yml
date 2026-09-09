@@ -1,0 +1,24 @@
+name: Export fix source
+
+on:
+  push:
+    branches:
+      - fix/post-review-8-items-20260909
+
+permissions:
+  contents: read
+
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+      - name: Archive source
+        run: git archive --format=zip HEAD -o source.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: shuzi-post-review-source
+          path: source.zip
+          retention-days: 1
