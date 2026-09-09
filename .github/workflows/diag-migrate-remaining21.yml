@@ -1,4 +1,4 @@
-name: Inspect root identity DOM
+name: Click current identity cards
 
 on:
   push:
@@ -23,7 +23,7 @@ jobs:
         run: |
           python -m pip install playwright
           python -m playwright install chromium
-      - name: Print clickable identity DOM
+      - name: Click current identity rows and record destinations
         shell: bash
         run: |
           python - <<'PY'
@@ -31,21 +31,40 @@ jobs:
           root='https://szfzml.mfuw8-bnsfa-gdaxhk.xyz/'
           with sync_playwright() as p:
               b=p.chromium.launch(headless=True)
-              page=b.new_page()
-              page.goto(root,wait_until='domcontentloaded',timeout=15000)
-              try: page.wait_for_load_state('networkidle',timeout=7000)
-              except Exception: pass
               for name in ['寿比南山','弦无虚发']:
+                  page=b.new_page()
+                  page.goto(root,wait_until='domcontentloaded',timeout=15000)
+                  try: page.wait_for_load_state('networkidle',timeout=7000)
+                  except Exception: pass
                   print(f'\n=== {name} ===')
-                  loc=page.get_by_text(name, exact=False)
-                  print('COUNT',loc.count())
-                  for i in range(min(loc.count(),5)):
-                      el=loc.nth(i)
+                  td=page.get_by_text(name, exact=False).first
+                  row=td.locator('xpath=ancestor::tr[1]')
+                  print('ROW_TEXT',repr(row.inner_text()))
+                  clickable=row.locator('span.MuiLink-root').first
+                  print('CLICKABLE_COUNT',clickable.count())
+                  before=page.url
+                  popup=None
+                  try:
+                      with page.expect_popup(timeout=3000) as popinfo:
+                          clickable.click(timeout=5000)
+                      popup=popinfo.value
+                      popup.wait_for_load_state('domcontentloaded',timeout=10000)
+                      print('POPUP_URL',popup.url)
+                      print('POPUP_TITLE',repr(popup.title()))
+                      print('POPUP_BODY_HEAD',repr(popup.locator('body').inner_text()[:3000]))
+                  except Exception as pop_exc:
+                      print('NO_POPUP',type(pop_exc).__name__,pop_exc)
                       try:
-                          print('TEXT',repr(el.inner_text()))
-                          print('OUTER',el.evaluate('(e)=>e.outerHTML'))
-                          print('ANCESTORS',el.evaluate("(e)=>{let a=[];for(let n=e;n&&a.length<6;n=n.parentElement)a.push(n.outerHTML.slice(0,3000));return a}"))
-                      except Exception as exc:
-                          print('EL_ERROR',type(exc).__name__,exc)
+                          if page.url == before:
+                              clickable.click(timeout=5000)
+                          page.wait_for_timeout(2500)
+                      except Exception as click_exc:
+                          print('CLICK_ERROR',type(click_exc).__name__,click_exc)
+                      print('PAGE_URL_AFTER',page.url)
+                      print('PAGE_TITLE_AFTER',repr(page.title()))
+                      print('PAGE_BODY_HEAD',repr(page.locator('body').inner_text()[:3000]))
+                  if popup:
+                      popup.close()
+                  page.close()
               b.close()
           PY
