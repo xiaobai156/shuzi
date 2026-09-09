@@ -86,4 +86,5 @@ def test_duplicate_bat_uses_per_site_latest_periods():
 
     assert "--latest" not in content
     assert "check_duplicates.py --recent 10" in content
-    assert "--write-cache" in content
+    assert "--from-cache" in content
+    assert "--write-cache" not in content

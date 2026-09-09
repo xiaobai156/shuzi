@@ -51,6 +51,20 @@ def validate_cycle_lengths(lengths):
     return result
 
 
+
+
+def merge_cycle_lengths(*sources):
+    """Merge explicit cycle limits and reject contradictory declarations."""
+    merged = {}
+    for source in sources:
+        for cycle, count in validate_cycle_lengths(source or {}).items():
+            if cycle in merged and merged[cycle] != count:
+                raise ValueError(
+                    f"周期 {cycle} 的期数上限冲突：{merged[cycle]} 与 {count}"
+                )
+            merged[cycle] = count
+    return merged
+
 def previous_period(value, lengths=None):
     cycle, issue = split_period(value)
     if int(issue) > 1:
@@ -73,6 +87,63 @@ def are_consecutive(left, right, lengths=None):
         return previous_period(right, lengths) == period_key(*split_period(left))
     except ValueError:
         return False
+
+
+def target_cycle_lengths(target):
+    """Return explicitly configured cycle lengths, including CLI shorthand."""
+    lengths = validate_cycle_lengths(target.get('cycle_lengths', {}))
+    current_cycle = cycle_key(target.get('cycle_id'))
+    previous_length = target.get('previous_cycle_length')
+    if previous_length is not None:
+        if not current_cycle or int(current_cycle) <= 1:
+            raise ValueError('previous_cycle_length 需要明确的当前 cycle_id')
+        if type(previous_length) is not int or not 1 <= previous_length <= 999:
+            raise ValueError('previous_cycle_length 必须是 1 至 999 的整数')
+        previous_cycle = str(int(current_cycle) - 1)
+        if previous_cycle in lengths and lengths[previous_cycle] != previous_length:
+            raise ValueError('上一周期期数上限与 cycle_lengths 冲突')
+        lengths[previous_cycle] = previous_length
+    return lengths
+
+
+def previous_issue_for_target(issue, target):
+    """Return the visible previous issue without inventing a rollover length."""
+    current = int(normalize_issue(issue))
+    if current > 1:
+        return str(current - 1)
+    cycle = cycle_key(target.get('cycle_id'))
+    lengths = target_cycle_lengths(target)
+    if not cycle or int(cycle) <= 1:
+        raise ValueError('当前为1期，但缺少明确 cycle_id 和上一周期长度')
+    previous_cycle = str(int(cycle) - 1)
+    if previous_cycle not in lengths:
+        raise ValueError('当前为1期，但缺少上一周期的明确期数上限')
+    return str(lengths[previous_cycle])
+
+
+def rollover_seam_indices(issues, target=None):
+    """Locate document-observed rollover seams, honoring explicit limits.
+
+    Without an explicit cycle limit, only an unambiguous adjacent N -> 1
+    transition is accepted.  This uses source order and never the wall clock.
+    """
+    normalized = [normalize_issue(issue) for issue in issues]
+    expected_previous = None
+    if target:
+        cycle = cycle_key(target.get('cycle_id'))
+        lengths = target_cycle_lengths(target)
+        if cycle and int(cycle) > 1:
+            expected_previous = lengths.get(str(int(cycle) - 1))
+    candidates = []
+    for index in range(1, len(normalized)):
+        previous = int(normalized[index - 1])
+        current = int(normalized[index])
+        if current != 1 or previous <= 1:
+            continue
+        if expected_previous is not None and previous != expected_previous:
+            continue
+        candidates.append(index)
+    return candidates
 
 
 def target_identity(target):

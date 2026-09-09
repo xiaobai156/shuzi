@@ -16,6 +16,10 @@ class FetchPolicy:
     issues: tuple[str, ...] = ()
     ready_selector: str = ''
     source_url_pattern: str = ''
+    keywords: tuple[str, ...] = ()
+    expected_count: int | None = None
+    history_discovery: bool = False
+    history_depth: int = 0
 
 
 CURRENT_POLICY = ContextVar('fetch_policy', default=FetchPolicy())
@@ -35,10 +39,21 @@ def target_policy(target, issues=()):
         urls.append(str(target['api_url']))
     hosts = frozenset(str(h).lower() for h in target.get('allowed_resource_hosts', []))
     insecure = frozenset((urlsplit(u).hostname or '').lower() for u in urls) if target.get('insecure_tls') is True else frozenset()
-    policy = FetchPolicy(frozenset(url_origin(u) for u in urls), hosts, insecure,
-                        tuple(as_list(target.get('anchor'))), tuple(issues),
-                        str(target.get('browser_ready_selector') or ''),
-                        str(target.get('source_url_pattern') or ''))
+    count = target.get('count') if type(target.get('count')) is int else None
+    depth = target.get('_history_depth') if type(target.get('_history_depth')) is int else 0
+    policy = FetchPolicy(
+        origins=frozenset(url_origin(u) for u in urls),
+        allowed_hosts=hosts,
+        insecure_hosts=insecure,
+        anchors=tuple(as_list(target.get('anchor'))),
+        issues=tuple(str(issue) for issue in issues),
+        ready_selector=str(target.get('browser_ready_selector') or ''),
+        source_url_pattern=str(target.get('source_url_pattern') or ''),
+        keywords=tuple(str(value) for value in as_list(target.get('keywords')) if str(value).strip()),
+        expected_count=count,
+        history_discovery=target.get('_history_discovery') is True,
+        history_depth=depth,
+    )
     token = CURRENT_POLICY.set(policy)
     try:
         yield policy

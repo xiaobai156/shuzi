@@ -14,8 +14,10 @@ from kill_numbers.parsing.common import (
     iter_all_issue_segment_matches,
     needs_strict_region_window,
     normalize_region,
+    anchor_scope_candidates,
     scope_text_by_anchor,
 )
+from kill_numbers.parsing.errors import AmbiguousSourceError, CandidateConflictError
 from kill_numbers.text_utils import (
     html_to_text,
     normalize_issue,
@@ -127,20 +129,52 @@ def detect_available_issues(
     region: str | None = None,
     issue_position_window: int | None = None,
     allowed_row_starts: set[int] | None = None,
+    history_depth: int | None = None,
 ) -> list[str]:
-    text = html_to_text(text)
-    text = scope_text_by_anchor(text, anchor, stop_anchor)
+    full_text = html_to_text(text)
+    scopes = anchor_scope_candidates(full_text, anchor, stop_anchor)
+    if history_depth is not None:
+        history_depth = resolve_candidate_window(history_depth)
 
-    candidates = list(candidate_rows(text, keywords, expected_count, allow_duplicate_numbers))
-    rows = ([row for row in candidates if row.start in allowed_row_starts]
-            if allowed_row_starts is not None else windowed_rows(candidates, region, issue_position_window))
-    available = []
-    for row in rows:
-        if len(row.groups) != 1:
-            raise ValueError(f"{row.issue}期 候选不唯一")
-        if row.issue not in available:
-            available.append(row.issue)
-    return available
+    scope_values = []
+    for scope in scopes:
+        candidates = list(
+            candidate_rows(
+                scope.text,
+                keywords,
+                expected_count,
+                allow_duplicate_numbers,
+            )
+        )
+        rows = (
+            [row for row in candidates if row.start in allowed_row_starts]
+            if allowed_row_starts is not None
+            else windowed_rows(
+                candidates,
+                region,
+                history_depth if history_depth is not None else issue_position_window,
+            )
+        )
+        available = []
+        for row in rows:
+            if len(row.groups) != 1:
+                raise CandidateConflictError(f"{row.issue}期 候选不唯一")
+            if row.issue not in available:
+                available.append(row.issue)
+        if available:
+            scope_values.append((scope, available))
+
+    if not scope_values:
+        return []
+    signatures = {tuple(values) for _scope, values in scope_values}
+    if len(signatures) > 1:
+        raise AmbiguousSourceError(
+            "正文锚点对应多个不同历史区块，无法确定唯一期数顺序"
+        )
+    return min(
+        scope_values,
+        key=lambda item: (item[0].end - item[0].start, item[0].start),
+    )[1]
 
 
 def nearest_issues(available: list[str], wanted: list[str], limit: int = 20) -> list[str]:

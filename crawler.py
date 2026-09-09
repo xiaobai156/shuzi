@@ -14,6 +14,7 @@ from kill_numbers.domain.models import (
     CrawlResult,
     RunStats,
     SourceDocument,
+    DocumentParseResult,
 )
 from kill_numbers.acquisition.http_client import (
     HEADERS,
@@ -155,6 +156,11 @@ from kill_numbers.parsing.registry import (
 )
 from kill_numbers.validation.result_validator import validate_issue_map
 from kill_numbers.parsing.source_scope import target_for_document
+from kill_numbers.parsing.errors import (
+    CandidateConflictError,
+    NoCandidateError,
+    SourceContractError,
+)
 from kill_numbers.application.crawl_service import (
     CrawlBatchProgress,
     CrawlDependencies,
@@ -171,7 +177,14 @@ from kill_numbers.infrastructure.debug_repository import (
 )
 from kill_numbers.infrastructure.file_store import atomic_write_text, atomic_write_json
 from kill_numbers.infrastructure.run_manifest import write_run_manifest
-from kill_numbers.domain.periods import cycle_key, canonical_url, validate_cycle_lengths, target_identity
+from kill_numbers.domain.periods import (
+    cycle_key,
+    canonical_url,
+    validate_cycle_lengths,
+    target_identity,
+    merge_cycle_lengths,
+    target_cycle_lengths,
+)
 from kill_numbers.infrastructure.output_repository import (
     backup_existing_outputs as backup_outputs_storage,
     cleanup_old_backups as cleanup_old_backups_storage,
@@ -778,20 +791,10 @@ def crawl_ttss_paginated_identity_top_10(
 def admin_content_matches_target(content: str, target: dict | None, issues: list[str] | None) -> bool:
     if not target or not issues:
         return bool(content.strip())
-    if target.get("special_parser") == "macau_baoma":
-        found = extract_macau_baoma_numbers(
-            content,
-            issues,
-            expected_count=target.get("count"),
-            region=target.get("region"),
-        )
-        return bool(found)
-    if target.get("special_parser") == "identity_article_bottom_10":
-        try:
-            return bool(identity_article_bottom_10_candidates(content, target))
-        except Exception:
-            return False
-    return strict_target_extracts(content, target, issues)
+    try:
+        return bool(parse_target_content(content, target, issues))
+    except NoCandidateError:
+        return False
 
 
 def crawl_admin_article_page(
@@ -810,7 +813,7 @@ def crawl_admin_article_page(
             if admin_content_matches_target(document.content, target, issues):
                 try:
                     issue_map = parse_target_content(document.content, target, issues or [])
-                except Exception:
+                except NoCandidateError:
                     continue
                 matched.append((document, issue_map))
         if matched:
@@ -901,13 +904,13 @@ def _document_conflict_error(
         f"{document.kind}@{document.url}: {','.join(numbers)}"
         for document, numbers in candidates
     ]
-    return ValueError(
+    return CandidateConflictError(
         f"{issue}期 跨文档候选冲突，已停止输出避免抓错：" + " | ".join(previews)
     )
 
 
 def _directional_parseable_documents(documents, target):
-    """Rank valid rows across a user-post sequence without joining its documents."""
+    """Rank valid rows across a user-post sequence without joining documents."""
     parseable = parseable_documents(documents)
     sequences = {}
     ordinary = []
@@ -924,26 +927,145 @@ def _directional_parseable_documents(documents, target):
     for group in sequences.values():
         rows = []
         for document in sorted(group, key=lambda doc: doc.metadata["region_index"]):
-            effective = target_for_document(target, document)
             try:
+                effective = target_for_document(target, document)
                 section, _ = scope_text_by_anchor_with_offset(
-                    html_to_text(document.content), effective.get("anchor"), effective.get("stop_anchor"))
-            except ValueError:
+                    html_to_text(document.content),
+                    effective.get("anchor"),
+                    effective.get("stop_anchor"),
+                )
+            except NoCandidateError:
                 continue
-            for row in candidate_rows(section, effective.get("keywords"), effective.get("count"),
-                                      effective.get("allow_duplicate_numbers", False)):
+            for row in candidate_rows(
+                section,
+                effective.get("keywords"),
+                effective.get("count"),
+                effective.get("allow_duplicate_numbers", False),
+            ):
                 rows.append((document, row))
-        selected = windowed_rows(rows, target.get("region"), target.get("issue_position_window"))
+        business_selected = windowed_rows(
+            rows,
+            target.get("region"),
+            target.get("issue_position_window"),
+        )
+        selected = (
+            windowed_rows(
+                rows,
+                target.get("region"),
+                target.get("_history_depth"),
+            )
+            if target.get("_history_discovery") is True
+            else business_selected
+        )
         ranks = {}
         for rank, (document, row) in enumerate(selected):
             ranks.setdefault(id(document), {})[row.start] = rank
+        current_starts = {}
+        for document, row in business_selected:
+            current_starts.setdefault(id(document), []).append(row.start)
         for document in group:
             if id(document) in ranks:
-                result.append(replace(document, metadata={**document.metadata,
-                    "allowed_row_starts": list(ranks[id(document)]),
-                    "row_ranks": ranks[id(document)],
-                    "selected_row_count": len(selected)}))
+                result.append(
+                    replace(
+                        document,
+                        metadata={
+                            **document.metadata,
+                            "allowed_row_starts": list(ranks[id(document)]),
+                            "current_allowed_row_starts": current_starts.get(
+                                id(document), []
+                            ),
+                            "current_window_verified": bool(business_selected),
+                            "row_ranks": ranks[id(document)],
+                            "selected_row_count": len(selected),
+                        },
+                    )
+                )
     return result
+
+
+def parse_target_document_results(
+    documents: list[SourceDocument],
+    target: dict,
+    issues: list[str],
+) -> DocumentParseResult:
+    """Merge independent documents per issue while retaining exact provenance."""
+    parseable = parseable_documents(documents)
+    source_url_pattern = str(target.get("source_url_pattern") or "").strip()
+    if source_url_pattern:
+        parseable = [
+            document
+            for document in parseable
+            if re.search(source_url_pattern, document.url, re.I)
+        ]
+        if not parseable:
+            raise SourceContractError(
+                f"没有找到专属来源文档：{source_url_pattern}"
+            )
+        source_anchor = str(target.get("source_anchor") or "").strip()
+        if source_anchor:
+            target = {**target, "anchor": source_anchor}
+
+    parseable = _directional_parseable_documents(parseable, target)
+    document_order = {id(document): index for index, document in enumerate(parseable)}
+    requested = list(dict.fromkeys(normalize_issue(issue) for issue in issues))
+    requested_set = set(requested)
+    parsed: list[tuple[SourceDocument, dict[str, list[str]]]] = []
+    for document in parseable:
+        try:
+            document_target = target_for_document(target, document)
+            issue_map = parse_target_content(document.content, document_target, requested)
+        except NoCandidateError:
+            continue
+        unexpected = {normalize_issue(issue) for issue in issue_map} - requested_set
+        if unexpected:
+            raise SourceContractError(
+                "解析器混入非指定期数："
+                + ",".join(f"{issue}期" for issue in sorted(unexpected, key=int))
+            )
+        if issue_map:
+            parsed.append((document, issue_map))
+
+    if not parsed:
+        return DocumentParseResult({}, {}, None)
+
+    merged: dict[str, list[str]] = {}
+    sources: dict[str, SourceDocument] = {}
+    for issue in requested:
+        candidates = [
+            (document, issue_map[issue])
+            for document, issue_map in parsed
+            if issue in issue_map
+        ]
+        if not candidates:
+            continue
+        distinct = {tuple(numbers) for _document, numbers in candidates}
+        if len(distinct) > 1:
+            raise _document_conflict_error(issue, candidates)
+        selected_document, selected_numbers = max(
+            candidates,
+            key=lambda item: (
+                item[0].priority,
+                -document_order[id(item[0])],
+            ),
+        )
+        merged[issue] = list(selected_numbers)
+        sources[issue] = selected_document
+
+    if not merged:
+        return DocumentParseResult({}, {}, None)
+    source_coverage = {
+        id(document): sum(1 for selected in sources.values() if selected is document)
+        for document, _issue_map in parsed
+    }
+    primary = max(
+        {id(document): document for document, _issue_map in parsed}.values(),
+        key=lambda document: (
+            source_coverage.get(id(document), 0),
+            document.priority,
+            -document_order[id(document)],
+        ),
+    )
+    return DocumentParseResult(merged, sources, primary)
 
 
 def parse_target_documents(
@@ -951,80 +1073,9 @@ def parse_target_documents(
     target: dict,
     issues: list[str],
 ) -> tuple[dict[str, list[str]], SourceDocument | None]:
-    parseable = parseable_documents(documents)
-    source_url_pattern = str(target.get("source_url_pattern") or "").strip()
-    if source_url_pattern:
-        matching_documents = [
-            document
-            for document in parseable
-            if re.search(source_url_pattern, document.url, re.I)
-        ]
-        if not matching_documents:
-            raise ValueError(
-                f"没有找到专属来源文档：{source_url_pattern}"
-            )
-        parseable = matching_documents
-        source_anchor = str(target.get("source_anchor") or "").strip()
-        if source_anchor:
-            target = dict(target)
-            target["anchor"] = source_anchor
-    parseable = _directional_parseable_documents(parseable, target)
-    priorities = sorted({document.priority for document in parseable}, reverse=True)
-    hard_markers = (
-        "候选不唯一",
-        "候选冲突",
-        "号码有重复",
-        "跨周期候选",
-        "同时存在数字期号",
-    )
-
-    all_tier_results: list[tuple[SourceDocument, dict[str, list[str]]]] = []
-    hard_errors: list[Exception] = []
-    for priority in priorities:
-        tier_results: list[tuple[SourceDocument, dict[str, list[str]]]] = []
-        for document in (
-            item for item in parseable if item.priority == priority
-        ):
-            document_target = target_for_document(target, document)
-            try:
-                issue_map = parse_target_content(
-                    document.content,
-                    document_target,
-                    issues,
-                )
-            except Exception as exc:
-                if any(marker in str(exc) for marker in hard_markers):
-                    hard_errors.append(exc)
-                continue
-            if issue_map:
-                tier_results.append((document, issue_map))
-        all_tier_results.extend(tier_results)
-
-    if hard_errors:
-        raise hard_errors[0]
-    if not all_tier_results:
-        return {}, None
-
-    for issue in issues:
-        normalized = normalize_issue(issue)
-        candidates = [
-            (document, issue_map[normalized])
-            for document, issue_map in all_tier_results
-            if normalized in issue_map
-        ]
-        unique_values = {tuple(numbers) for _document, numbers in candidates}
-        if len(unique_values) > 1:
-            raise _document_conflict_error(normalized, candidates)
-
-    selected_document, selected_map = max(
-        all_tier_results,
-        key=lambda item: (
-            len(item[1]),
-            item[0].priority,
-            -parseable.index(item[0]),
-        ),
-    )
-    return selected_map, selected_document
+    """Compatibility wrapper; new callers should use per-issue provenance."""
+    result = parse_target_document_results(documents, target, issues)
+    return result.issue_map, result.primary_document
 
 
 def contract_is_split_across_documents(
@@ -1124,6 +1175,7 @@ def available_issues_for_documents(
     documents: list[SourceDocument],
     target: dict,
 ) -> tuple[list[str], SourceDocument | None]:
+    """Aggregate independent source documents without hiding hard failures."""
     parseable = parseable_documents(documents)
     source_url_pattern = str(target.get("source_url_pattern") or "").strip()
     if source_url_pattern:
@@ -1132,24 +1184,58 @@ def available_issues_for_documents(
             for document in parseable
             if re.search(source_url_pattern, document.url, re.I)
         ]
+        if not parseable:
+            raise SourceContractError(
+                f"没有找到专属来源文档：{source_url_pattern}"
+            )
     parseable = _directional_parseable_documents(parseable, target)
-    priorities = sorted({document.priority for document in parseable}, reverse=True)
-    for priority in priorities:
-        candidates = []
-        for document in (item for item in parseable if item.priority == priority):
+    document_order = {id(document): index for index, document in enumerate(parseable)}
+    candidates: list[tuple[SourceDocument, list[str]]] = []
+    for document in parseable:
+        try:
             document_target = target_for_document(target, document)
-            try:
-                available = available_issues_from_content(
+            if (
+                document_target.get("_history_discovery") is True
+                and document.metadata.get("current_window_verified") is not True
+            ):
+                current_target = dict(document_target)
+                current_target.pop("_history_discovery", None)
+                current_target.pop("_history_depth", None)
+                current = available_issues_from_content(
                     document.content,
-                    document_target,
+                    current_target,
                 )
-            except Exception:
-                continue
-            if available:
-                candidates.append((available, document))
-        if candidates:
-            return max(candidates, key=lambda item: len(item[0]))
-    return [], None
+                if not current:
+                    continue
+            available = available_issues_from_content(
+                document.content,
+                document_target,
+            )
+        except NoCandidateError:
+            continue
+        if available:
+            candidates.append((document, available))
+    if not candidates:
+        return [], None
+
+    ordered = sorted(
+        candidates,
+        key=lambda item: (-item[0].priority, document_order[id(item[0])]),
+    )
+    available = unique_keep_order(
+        issue
+        for _document, issues in ordered
+        for issue in issues
+    )
+    primary = max(
+        candidates,
+        key=lambda item: (
+            len(item[1]),
+            item[0].priority,
+            -document_order[id(item[0])],
+        ),
+    )[0]
+    return available, primary
 
 
 def _crawl_dependencies() -> CrawlDependencies:
@@ -1160,6 +1246,7 @@ def _crawl_dependencies() -> CrawlDependencies:
         contract_is_split_across_documents=contract_is_split_across_documents,
         save_debug_page=save_debug_page,
         crawl_ttss_paginated_identity_top_10=crawl_ttss_paginated_identity_top_10,
+        parse_target_document_results=parse_target_document_results,
     )
 
 
@@ -1219,7 +1306,7 @@ def strict_target_extracts(content: str, target: dict, issues: list[str]) -> boo
             region=target.get("region"),
             issue_position_window=target.get("issue_position_window"),
         )
-    except Exception:
+    except NoCandidateError:
         return False
     return bool(found)
 
@@ -1512,11 +1599,13 @@ def _main_unlocked() -> int:
     try:
         issues = parse_issues(args.issues)
         cycle = cycle_key(args.cycle_id)
-        lengths = {}
+        command_lengths = {}
         if args.previous_cycle_length is not None:
             if not cycle or int(cycle) <= 1:
                 raise ValueError("上一周期长度必须同时提供明确的 --cycle-id")
-            lengths = validate_cycle_lengths({str(int(cycle)-1): args.previous_cycle_length})
+            command_lengths = validate_cycle_lengths(
+                {str(int(cycle) - 1): args.previous_cycle_length}
+            )
     except (TypeError, ValueError) as exc:
         parser.error(str(exc))
     if len(issues) > 1:
@@ -1529,14 +1618,46 @@ def _main_unlocked() -> int:
 
     # Risk checks belong to the formal target pipeline.  This entrypoint must
     # not fetch risky sites twice or mutate targets.json during a run.
-    active_targets = [{**target, **({'cycle_id': cycle} if cycle else {})} for target in TARGETS]
+    try:
+        active_targets = []
+        configured_cycles = set()
+        for raw_target in TARGETS:
+            target = dict(raw_target)
+            configured_cycle = cycle_key(target.get("cycle_id"))
+            if cycle and configured_cycle and cycle != configured_cycle:
+                raise ValueError(
+                    f"{target.get('name') or target.get('url')} 的 cycle_id "
+                    f"{configured_cycle} 与命令行 {cycle} 冲突"
+                )
+            selected_cycle = cycle or configured_cycle
+            if selected_cycle:
+                target["cycle_id"] = selected_cycle
+                configured_cycles.add(selected_cycle)
+            active_targets.append(target)
+
+        if len(configured_cycles) > 1:
+            raise ValueError("一次单期运行不能混用多个 cycle_id")
+        if not cycle and configured_cycles and any(
+            not cycle_key(target.get("cycle_id")) for target in active_targets
+        ):
+            raise ValueError(
+                "部分目标配置了 cycle_id、部分目标未配置；请用 --cycle-id 明确本轮统一周期"
+            )
+
+        lengths = dict(command_lengths)
+        for target in active_targets:
+            lengths = merge_cycle_lengths(lengths, target_cycle_lengths(target))
+        if lengths:
+            active_targets = [
+                {**target, "cycle_lengths": dict(lengths)}
+                for target in active_targets
+            ]
+    except ValueError as exc:
+        parser.error(str(exc))
+
     for target in active_targets:
         if target.get('insecure_tls'):
             print(f"来源可信度降级：{target['name']} 显式关闭TLS证书验证")
-        for cycle_name, count in validate_cycle_lengths(target.get('cycle_lengths', {})).items():
-            if cycle_name in lengths and lengths[cycle_name] != count:
-                parser.error("同一周期的期数上限存在配置冲突")
-            lengths[cycle_name] = count
     if not active_targets:
         parser.error("没有启用的抓取目标")
     run_id = args.run_id or uuid.uuid4().hex

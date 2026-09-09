@@ -16,8 +16,8 @@ if not defined PY_CMD (
 
 title 杀数字近10期重复检测
 cd /d "%~dp0"
-echo 正在按每个站点自己的 region 识别最新期并检测近10期...
-%PY_CMD% check_duplicates.py --recent 10 --workers 8 --write-cache --cache recent_10_cache.json
+echo 正在读取已积累且校验完整的近10期缓存...
+%PY_CMD% check_duplicates.py --recent 10 --from-cache --cache recent_10_cache.json
 set "EXIT_CODE=%ERRORLEVEL%"
 echo.
 if "%EXIT_CODE%"=="0" (

@@ -1,6 +1,7 @@
 import argparse
 import os
 import glob
+import hashlib
 import json
 import re
 from collections import defaultdict
@@ -12,6 +13,7 @@ from run_lock import exclusive_run_lock
 from kill_numbers.domain.periods import (
     canonical_url, cycle_key, period_key, period_sort_key, split_period,
     are_consecutive, validate_cycle_lengths, target_identity, recent_periods,
+    merge_cycle_lengths, target_cycle_lengths,
 )
 from kill_numbers.infrastructure.cache_repository import CACHE_VERSION, target_signature
 from kill_numbers.validation.duplicate_gate import (
@@ -111,11 +113,25 @@ def normalize_numbers(numbers: str) -> str:
     return normalize_number_string(numbers)
 
 
-def parse_line(line, source_file, line_no, default_issue=None):
+SUCCESS_FILE_RE = re.compile(
+    r"(?:(?P<cycle>[1-9]\d{0,5})周期-)?(?P<issue>\d+)期-杀数字-成功\.txt"
+)
+
+
+def parse_line(
+    line,
+    source_file,
+    line_no,
+    default_issue=None,
+    default_cycle="",
+):
     raw = line.rstrip("\r\n")
     if not raw.strip():
         return None
-    match = re.fullmatch(r"\s*([0-9０-９,，.．、\s]+)\s+([^0-9０-９\s].*?)(?:\s+(\d+\s*期))?\s*", raw)
+    match = re.fullmatch(
+        r"\s*([0-9０-９,，.．、\s]+)\s+([^0-9０-９\s].*?)(?:\s+(\d+\s*期))?\s*",
+        raw,
+    )
     if not match:
         return None
     numbers = normalize_numbers(match.group(1))
@@ -125,14 +141,61 @@ def parse_line(line, source_file, line_no, default_issue=None):
     issue = explicit_issue or default_issue
     if not issue:
         raise ValueError("文件名和记录都缺少期数")
-    return Record(source_file, line_no, numbers, match.group(2).strip(), f"{issue_key(issue)}期", raw)
+    return Record(
+        source_file,
+        line_no,
+        numbers,
+        match.group(2).strip(),
+        f"{issue_key(issue)}期",
+        raw,
+        cycle_id=cycle_key(default_cycle),
+    )
+
+
+def _manifest_cycle_for_success_file(path: Path, issue: str) -> str:
+    manifest_path = path.with_name(f"{issue}期-杀数字-运行.json")
+    if not manifest_path.is_file():
+        return ""
+    try:
+        value = json.loads(manifest_path.read_text(encoding="utf-8-sig"))
+        if (
+            not isinstance(value, dict)
+            or value.get("version") != 1
+            or value.get("outputs_finalized") is not True
+            or issue_key(value.get("issue")) != issue
+        ):
+            raise ValueError("运行清单结构、状态或期数不匹配")
+        digest = hashlib.sha256(path.read_bytes()).hexdigest()
+        matching = [
+            item
+            for item in value.get("files", [])
+            if isinstance(item, dict)
+            and Path(str(item.get("path") or "")).name == path.name
+        ]
+        if len(matching) != 1 or matching[0].get("sha256") != digest:
+            raise ValueError("运行清单中的成功文件哈希不匹配")
+        return cycle_key(value.get("cycle_id"))
+    except (OSError, ValueError, TypeError) as exc:
+        raise ValueError(f"运行清单不能证明文件周期：{exc}") from exc
 
 
 def read_records(files):
     records, bad_lines = [], []
     for path in files:
-        name_match = re.fullmatch(r"(\d+)期-杀数字-成功\.txt", path.name)
-        default_issue = issue_key(name_match.group(1)) if name_match else None
+        name_match = SUCCESS_FILE_RE.fullmatch(path.name)
+        default_issue = issue_key(name_match.group("issue")) if name_match else None
+        filename_cycle = cycle_key(name_match.group("cycle")) if name_match and name_match.group("cycle") else ""
+        manifest_cycle = ""
+        if default_issue:
+            try:
+                manifest_cycle = _manifest_cycle_for_success_file(path, default_issue)
+            except ValueError as exc:
+                bad_lines.append(f"{path.name}：{exc}")
+                continue
+        if filename_cycle and manifest_cycle and filename_cycle != manifest_cycle:
+            bad_lines.append(f"{path.name}：文件名周期与运行清单周期不一致")
+            continue
+        default_cycle = filename_cycle or manifest_cycle
         try:
             content = path.read_text(encoding="utf-8-sig")
         except (OSError, UnicodeError) as exc:
@@ -140,7 +203,13 @@ def read_records(files):
             continue
         for line_no, line in enumerate(content.splitlines(), 1):
             try:
-                record = parse_line(line, path.name, line_no, default_issue)
+                record = parse_line(
+                    line,
+                    path.name,
+                    line_no,
+                    default_issue,
+                    default_cycle,
+                )
             except ValueError as exc:
                 bad_lines.append(f"{path.name}:{line_no} {exc} {line}")
                 continue
@@ -149,6 +218,23 @@ def read_records(files):
             elif line.strip():
                 bad_lines.append(f"{path.name}:{line_no} {line}")
     return records, bad_lines
+
+
+def apply_default_cycle_to_unlabelled_records(records: list[Record], cycle: str) -> None:
+    """Apply a CLI cycle only when the unlabelled file range cannot cross 1."""
+    cycle = cycle_key(cycle)
+    if not cycle:
+        return
+    unlabelled = [record for record in records if not record.cycle_id]
+    if not unlabelled:
+        return
+    issues = sorted({int(issue_key(record.issue)) for record in unlabelled})
+    if issues and issues != list(range(issues[0], issues[-1] + 1)):
+        raise ValueError(
+            "文件期数不连续，不能用一个 --cycle-id 覆盖；请使用周期文件名或运行清单"
+        )
+    for record in unlabelled:
+        record.cycle_id = cycle
 
 
 def record_period(record):
@@ -472,9 +558,14 @@ def available_issues_for_target(target: dict) -> tuple[str, str, list[str]]:
     return name or target_name(target), target.get("url", ""), available
 
 
-def snapshot_for_target(target: dict) -> TargetSnapshot:
-    with target_policy(target):
-        return _snapshot_for_target(target)
+def snapshot_for_target(target: dict, recent_count: int = DEFAULT_RECENT) -> TargetSnapshot:
+    history_target = {
+        **target,
+        "_history_discovery": True,
+        "_history_depth": recent_count,
+    }
+    with target_policy(history_target):
+        return _snapshot_for_target(history_target)
 
 
 def _snapshot_for_target(target: dict) -> TargetSnapshot:
@@ -550,6 +641,7 @@ def recent_count_for_snapshot(snapshot, fallback_recent_count):
 
 def fetch_target_snapshots(
     workers: int,
+    recent_count: int = DEFAULT_RECENT,
 ) -> tuple[list[TargetSnapshot], list[CrawlProblem], list[RegionProblem], str | None]:
     import crawler
 
@@ -561,7 +653,11 @@ def fetch_target_snapshots(
 
     print(f"自动探测最新期：读取目标 {len(targets)} 个，并发 {max_workers}")
     for done_count, entry in enumerate(
-        iter_completed_batch(targets, snapshot_for_target, max_workers),
+        iter_completed_batch(
+            targets,
+            lambda target: snapshot_for_target(target, recent_count),
+            max_workers,
+        ),
         start=1,
     ):
         target = entry.item
@@ -658,17 +754,21 @@ def _records_from_snapshot(snapshot: TargetSnapshot, issues: list[str]) -> tuple
             for result in accepted
         ], None
 
-    issue_map, selected_document = crawler.parse_target_documents(
+    parsed = crawler.parse_target_document_results(
         snapshot.documents,
         target,
         issues,
     )
+    issue_map = parsed.issue_map
+    selected_document = parsed.primary_document
+    selected_documents = parsed.source_documents
     if issue_map:
         issue_map = crawler.validate_issue_map(
             target,
             issues,
             issue_map,
             source_document=selected_document,
+            source_documents=selected_documents,
             require_source_document=True,
         )
     content = (
@@ -678,7 +778,12 @@ def _records_from_snapshot(snapshot: TargetSnapshot, issues: list[str]) -> tuple
     )
     if issue_map:
         for issue, numbers in issue_map.items():
-            evidence_from_source_document(target, issue, numbers, selected_document)
+            evidence_from_source_document(
+                target,
+                issue,
+                numbers,
+                selected_documents[issue],
+            )
         return [
             Record(
                 source_file="实时抓取缓存",
@@ -853,6 +958,36 @@ def validate_cache_data(data, path, expected_recent_count=None, targets=None):
     return records
 
 
+def effective_targets_with_cycle_contract(
+    raw_targets: list[dict],
+    cycle: str = "",
+    cycle_lengths: dict | None = None,
+) -> tuple[list[dict], dict[str, int]]:
+    """Apply a CLI cycle without overriding contradictory target contracts."""
+    cli_cycle = cycle_key(cycle)
+    cli_lengths = validate_cycle_lengths(cycle_lengths or {})
+    global_lengths = dict(cli_lengths)
+    effective: list[dict] = []
+    for raw_target in raw_targets:
+        target = dict(raw_target)
+        configured_cycle = cycle_key(target.get("cycle_id"))
+        if cli_cycle and configured_cycle and cli_cycle != configured_cycle:
+            raise ValueError(
+                f"{target.get('name') or target.get('url')} 的 cycle_id "
+                f"{configured_cycle} 与命令行 {cli_cycle} 冲突"
+            )
+        selected_cycle = cli_cycle or configured_cycle
+        if selected_cycle:
+            target["cycle_id"] = selected_cycle
+        target_lengths = target_cycle_lengths(target)
+        merged_target_lengths = merge_cycle_lengths(target_lengths, cli_lengths)
+        if merged_target_lengths:
+            target["cycle_lengths"] = merged_target_lengths
+        global_lengths = merge_cycle_lengths(global_lengths, target_lengths)
+        effective.append(target)
+    return effective, global_lengths
+
+
 def write_records_cache(
     path: Path,
     records: list[Record],
@@ -874,7 +1009,9 @@ def write_records_cache(
             'cycle_verified': bool(t.get('cycle_id')), 'cycle_id': cycle_key(t.get('cycle_id')),
             'latest_period': max((record_period(r) for r in records if r.target_id == target_identity(t)), key=period_sort_key, default='') }
             for t in (targets or [])},
-        "cycle_lengths": {k: v for t in (targets or []) for k, v in t.get('cycle_lengths', {}).items()},
+        "cycle_lengths": merge_cycle_lengths(
+            *(target_cycle_lengths(target) for target in (targets or []))
+        ),
         "recent_count": recent_count,
         "records": [
             {
@@ -1037,10 +1174,16 @@ def _main_unlocked() -> int:
     modes = parser.add_mutually_exclusive_group()
     modes.add_argument("--from-files", action="store_true")
     modes.add_argument("--from-cache", action="store_true")
+    modes.add_argument(
+        "--rebuild-history",
+        action="store_true",
+        help="从每个站点已确认栏目重建近10期；必须明确提供 cycle-id",
+    )
     parser.add_argument("--write-cache", action="store_true")
     parser.add_argument("--cache", default=str(crawler.CACHE_FILE))
     parser.add_argument("--output", default=str(crawler.SCRIPT_DIR / DEFAULT_OUTPUT))
     parser.add_argument("--cycle-id", default=os.environ.get("SHUZI_CYCLE_ID", ""))
+    parser.add_argument("--previous-cycle-length", type=int, default=None)
     args = parser.parse_args()
     if args.issues and args.latest:
         parser.error("--issues 和 --latest 只能二选一")
@@ -1048,23 +1191,53 @@ def _main_unlocked() -> int:
         parser.error("recent 和 workers 必须是正整数")
     if args.from_cache and (args.files or args.write_cache or args.issues or args.latest):
         parser.error("缓存读取不能与文件、期数或写缓存模式混用")
+    if args.rebuild_history and (args.files or args.issues or args.latest):
+        parser.error("--rebuild-history 不能与文件、--issues 或 --latest 混用")
+    if args.from_files and args.latest:
+        parser.error("文件模式不能使用 --latest；请从文件名或运行清单取得期数")
     try:
         cycle = cycle_key(args.cycle_id)
+        command_lengths = {}
+        if args.previous_cycle_length is not None:
+            if not cycle or int(cycle) <= 1:
+                raise ValueError("上一周期长度必须同时提供明确的 --cycle-id")
+            command_lengths = validate_cycle_lengths(
+                {str(int(cycle) - 1): args.previous_cycle_length}
+            )
+        targets, lengths = effective_targets_with_cycle_contract(
+            crawler.load_targets(),
+            cycle,
+            command_lengths,
+        )
     except ValueError as exc:
         parser.error(str(exc))
-    targets = [{**t, **({'cycle_id': cycle} if cycle else {})} for t in crawler.load_targets()]
+    live_history_mode = args.rebuild_history or not (
+        args.from_cache
+        or args.files
+        or args.from_files
+        or args.issues
+        or args.latest
+    )
+    if live_history_mode and not cycle:
+        parser.error(
+            "实时重建近10期必须明确 --cycle-id（或先设置 SHUZI_CYCLE_ID）；"
+            "只读已积累缓存请使用 --from-cache"
+        )
     original_targets = crawler.TARGETS
     crawler.TARGETS = targets
     records, files, bad_lines, problems = [], [], [], []
     region_problems = region_config_problems(targets)
     issues, latest_issue = None, None
-    lengths = {}
     try:
         if args.from_cache:
             cache_path = Path(args.cache)
             records = load_records_cache(cache_path, args.recent, targets)
             cache_data = json.loads(cache_path.read_text(encoding="utf-8-sig"))
-            lengths = validate_cycle_lengths(cache_data.get('cycle_lengths', {}))
+            cache_lengths = validate_cycle_lengths(cache_data.get('cycle_lengths', {}))
+            for cycle_name, count in cache_lengths.items():
+                if cycle_name in lengths and lengths[cycle_name] != count:
+                    raise ValueError("缓存周期长度与命令行声明冲突")
+                lengths[cycle_name] = count
             health_path = getattr(crawler, 'CACHE_STATE_FILE', None)
             if health_path and Path(health_path).exists():
                 health = json.loads(Path(health_path).read_text(encoding='utf-8'))
@@ -1074,8 +1247,7 @@ def _main_unlocked() -> int:
             files = [Path(f) for f in args.files] if args.files else sorted(crawler.RESULTS_DIR.glob('*期-杀数字-成功.txt'))
             records, bad_lines = read_records(files)
             add_urls(records)
-            for record in records:
-                record.cycle_id = cycle
+            apply_default_cycle_to_unlabelled_records(records, cycle)
             if args.issues:
                 issues = parse_issues(args.issues)
                 records = filter_records_by_issues(records, issues)
@@ -1084,7 +1256,9 @@ def _main_unlocked() -> int:
             records, problems = records_from_crawler(issues, args.workers)
             problems.append(CrawlProblem('全部目标', '', '统一指定期数仅供诊断，未证明各站点自己的最新期'))
         else:
-            snapshots, discovery_problems, region_problems, latest_issue = fetch_target_snapshots(args.workers)
+            snapshots, discovery_problems, region_problems, latest_issue = fetch_target_snapshots(
+                args.workers, args.recent
+            )
             problems.extend(discovery_problems)
             records, crawl_problems, issues = records_from_recent_snapshots(snapshots, args.recent)
             problems.extend(crawl_problems)

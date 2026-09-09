@@ -7,6 +7,7 @@ from urllib.parse import urljoin
 from kill_numbers.acquisition.http_client import fetch_json
 from kill_numbers.acquisition.documents import make_source_document
 from kill_numbers.domain.models import SourceDocument
+from kill_numbers.parsing.errors import NoCandidateError
 from kill_numbers.text_utils import clean_name, origin
 
 
@@ -129,7 +130,7 @@ def crawl_user_page(
     for document in parseable:
         try:
             found = extract_issues(document.content)
-        except Exception:
+        except NoCandidateError:
             continue
         if issues and all(issue in found for issue in issues):
             return name, document.content

@@ -123,17 +123,8 @@ def _embedded_documents(
         ),
     ]
     decoded_values = decode_strdecode_payloads(raw_html)
-    if decoded_values:
-        documents.append(
-            make_source_document(
-                kind="decoded_inline_stream",
-                url=f"{page_url}#decoded-stream",
-                parent_url=page_url,
-                content="\n".join(decoded_values),
-                priority=decoded_priority,
-                metadata={"parseable": True},
-            )
-        )
+    # Each decoder result is an independent source fragment.  Joining them with
+    # whitespace could manufacture a number row that never existed in the page.
     for index, value in enumerate(decoded_values):
         documents.append(
             make_source_document(
@@ -141,8 +132,8 @@ def _embedded_documents(
                 url=f"{page_url}#decoded-{index + 1}",
                 parent_url=page_url,
                 content=value,
-                priority=0,
-                metadata={"parseable": False, "stream_index": index},
+                priority=decoded_priority,
+                metadata={"parseable": True, "component_index": index},
             )
         )
     for index, value in enumerate(inline_script_blocks(raw_html)):
@@ -219,17 +210,6 @@ def discover_static_documents(url: str) -> tuple[str, list[SourceDocument]]:
                 )
             )
             decoded_values = decode_strdecode_payloads(content)
-            if decoded_values:
-                documents.append(
-                    make_source_document(
-                        kind="decoded_script_stream",
-                        url=f"{child_url}#decoded-stream",
-                        parent_url=child_url,
-                        content="\n".join(decoded_values),
-                        priority=75,
-                        metadata={"parseable": True, "page_region": page_region},
-                    )
-                )
             for index, decoded in enumerate(decoded_values):
                 documents.append(
                     make_source_document(
@@ -237,10 +217,10 @@ def discover_static_documents(url: str) -> tuple[str, list[SourceDocument]]:
                         url=f"{child_url}#decoded-{index + 1}",
                         parent_url=child_url,
                         content=decoded,
-                        priority=0,
+                        priority=75,
                         metadata={
-                            "parseable": False,
-                            "stream_index": index,
+                            "parseable": True,
+                            "component_index": index,
                             "page_region": page_region,
                         },
                     )
