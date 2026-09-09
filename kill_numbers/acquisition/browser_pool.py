@@ -47,7 +47,7 @@ def _render_owned(state, url, timeout):
         else:
             page.wait_for_function(r'''({anchors, issues}) => {
                 if (!document.body) return false;
-                const clean = s => s.normalize('NFKC').replace(/\\s+/g, '');
+                const clean = s => s.normalize('NFKC').replace(/\s+/g, '');
                 const body = clean(document.body.innerText || '');
                 return (!anchors.length || anchors.some(a => body.includes(clean(a))))
                     && issues.every(i => new RegExp('(^|[^0-9])0?' + i + '期').test(body));

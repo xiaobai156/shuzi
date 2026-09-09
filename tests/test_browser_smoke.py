@@ -17,7 +17,7 @@ def test_real_chromium_owner_threads_and_context_isolation(monkeypatch):
             if self.path != "/":
                 self.send_response(404);self.end_headers();return
             cookies.append(self.headers.get('Cookie'))
-            body='<meta charset="utf-8"><h1>专属栏目</h1><p>215期 01 02 03</p>'.encode()
+            body='<meta charset="utf-8"><h1>专 属 栏 目</h1><p>215期 01 02 03</p>'.encode()
             self.send_response(200)
             self.send_header('Content-Type','text/html; charset=utf-8')
             self.send_header('Set-Cookie','private=value; Path=/')

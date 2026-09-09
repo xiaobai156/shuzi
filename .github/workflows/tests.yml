@@ -2,7 +2,7 @@ name: Regression tests
 
 on:
   push:
-    branches: [main, 'fix/accuracy-review-20260909']
+    branches: [main, 'fix/accuracy-*']
   pull_request:
 
 permissions:
@@ -10,29 +10,49 @@ permissions:
 
 jobs:
   tests:
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            python: '3.11'
+          - os: windows-latest
+            python: '3.11'
+          - os: ubuntu-latest
+            python: '3.13'
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    env:
+      PYTHONUTF8: '1'
     steps:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
       - uses: actions/setup-python@v5
         with:
-          python-version: '3.11'
+          python-version: ${{ matrix.python }}
       - name: Install test dependencies
-        run: python -m pip install pytest
-      - name: Save reviewed source snapshot
-        run: git archive --format=zip HEAD -o source.zip
+        run: python -m pip install -r requirements-test.txt
       - name: Compile
-        run: python -m compileall -q crawler.py check_duplicates.py kill_numbers
+        run: python -m compileall -q crawler.py check_duplicates.py retry_failed.py run_crawler_multi_prompt.py kill_numbers
       - name: Test
         run: python -m pytest -q --junitxml=pytest-results.xml
+      - name: Install optional browser smoke dependencies
+        if: matrix.os == 'ubuntu-latest' && matrix.python == '3.11'
+        run: |
+          python -m pip install playwright
+          python -m playwright install --with-deps chromium
+      - name: Real Chromium local-fixture smoke test
+        if: matrix.os == 'ubuntu-latest' && matrix.python == '3.11'
+        env:
+          RUN_BROWSER_SMOKE: '1'
+        run: python -m pytest -q tests/test_browser_smoke.py --junitxml=browser-results.xml
       - name: Upload test evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: regression-evidence
+          name: regression-${{ matrix.os }}-${{ matrix.python }}
           path: |
-            source.zip
             pytest-results.xml
+            browser-results.xml
           retention-days: 7
