@@ -1,0 +1,45 @@
+name: Verify Guoyan migrated mirror
+
+on:
+  push:
+    branches:
+      - diag/guoyan-mirror-20260910
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      PYTHONUTF8: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Verify exact period through production parser
+        shell: bash
+        run: |
+          python - <<'PY'
+          import crawler
+          from kill_numbers.acquisition.policy import target_policy
+          targets={t['name']:t for t in crawler.load_targets()}
+          t=dict(targets['过眼云烟'])
+          old=t['url']
+          t['url']='https://8818.90216a.com/read.php?tid=526'
+          print('OLD',old)
+          print('CANDIDATE',t['url'])
+          with target_policy(t,['252']):
+              name,docs=crawler.fetch_target_documents(t,['252'])
+          print('FETCH_NAME',name)
+          print('DOCS',[(d.kind,d.url,d.priority,d.metadata) for d in docs if d.metadata.get('parseable')])
+          found,selected=crawler.parse_target_documents(docs,t,['252'])
+          print('FOUND',found)
+          print('SELECTED',None if selected is None else (selected.kind,selected.url,selected.priority,selected.metadata))
+          if '252' not in found:
+              raise SystemExit('candidate does not contain valid 252')
+          if len(found['252']) != 10 or len(set(found['252'])) != 10:
+              raise SystemExit('candidate 252 is not ten unique numbers')
+          PY
