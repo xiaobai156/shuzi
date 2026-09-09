@@ -1,0 +1,93 @@
+name: Diagnose final29 live sources
+
+on:
+  push:
+    branches:
+      - fix/final-29-20260909
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      PYTHONUTF8: '1'
+      SHUZI_BROWSER_CONCURRENCY: '2'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/final-29-20260909
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install Chromium
+        run: |
+          python -m pip install playwright
+          python -m playwright install --with-deps chromium
+      - name: Diagnose exact sources
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json, os, re, ssl
+          from pathlib import Path
+          from urllib.request import Request, urlopen
+          import crawler
+          from kill_numbers.acquisition.policy import target_policy
+          from kill_numbers.acquisition.documents import document_debug_text
+          from kill_numbers.acquisition.strategies.linked_pages import topic_links
+
+          out=Path('diag-final29'); out.mkdir(exist_ok=True)
+          targets={t['name']:t for t in crawler.load_targets()}
+          names=['不可或缺','湖心小筑','六合绝杀十码','新竹论坛','醉八仙','马经论坛','横财富']
+          for name in names:
+              t=targets[name]
+              d=out/name; d.mkdir(exist_ok=True)
+              try:
+                  with target_policy(t,['252']):
+                      n, docs=crawler.fetch_target_documents(t,['252'])
+                  (d/'documents.txt').write_text(document_debug_text(docs),encoding='utf-8')
+                  (d/'meta.json').write_text(json.dumps([{'kind':x.kind,'url':x.url,'priority':x.priority,'metadata':x.metadata} for x in docs],ensure_ascii=False,indent=2),encoding='utf-8')
+              except Exception as e:
+                  (d/'error.txt').write_text(type(e).__name__+': '+str(e),encoding='utf-8')
+
+          # Find exact 252 article links without changing production pagination limits.
+          for name in ['告别那时','私房一肖']:
+              t=targets[name]; rows=[]
+              for page in range(1,21):
+                  url=re.sub(r'([?&]page=)\d+',rf'\g<1>{page}',t['url'])
+                  try:
+                      with target_policy({**t,'url':url},['252']):
+                          _n,docs=crawler.discover_static_documents(url)
+                      matches=[]
+                      for doc in crawler.parseable_documents(docs):
+                          for href,label in topic_links(doc.content):
+                              if '252期' in label and name in label and '绝杀10码' in label:
+                                  matches.append({'href':href,'label':label,'doc':doc.url})
+                      rows.append({'page':page,'matches':matches})
+                      if matches: break
+                  except Exception as e:
+                      rows.append({'page':page,'error':str(e)})
+                      break
+              (out/f'{name}-pagination.json').write_text(json.dumps(rows,ensure_ascii=False,indent=2),encoding='utf-8')
+
+          # Measure the two >8 MiB configured admin responses, without parsing them.
+          for name in ['蔡邕救琴','茂名神码']:
+              t=targets[name]
+              url=t.get('api_url') or t['url']
+              rec={'url':url}
+              try:
+                  req=Request(url,headers=crawler.HEADERS)
+                  with urlopen(req,timeout=25,context=ssl.create_default_context()) as r:
+                      data=r.read(24*1024*1024+1)
+                      rec.update(status=getattr(r,'status',None),final_url=r.geturl(),content_type=r.headers.get('Content-Type'),content_length_header=r.headers.get('Content-Length'),bytes_read=len(data),over_24m=len(data)>24*1024*1024)
+              except Exception as e:
+                  rec['error']=type(e).__name__+': '+str(e)
+              (out/f'{name}-size.json').write_text(json.dumps(rec,ensure_ascii=False,indent=2),encoding='utf-8')
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: final29-diagnostics
+          path: diag-final29
+          retention-days: 1
