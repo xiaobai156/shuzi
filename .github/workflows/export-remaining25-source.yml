@@ -1,0 +1,24 @@
+name: Export remaining25 source
+
+on:
+  push:
+    branches:
+      - fix/remaining25-20260910
+
+permissions:
+  contents: read
+
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/remaining25-20260910
+      - name: Archive source
+        run: git archive --format=zip HEAD -o shuzi-remaining25-source.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: shuzi-remaining25-source
+          path: shuzi-remaining25-source.zip
+          retention-days: 1
