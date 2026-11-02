@@ -37,7 +37,7 @@ def iter_completed_batch(
             index, item = futures[future]
             try:
                 yield BatchCompletion(index=index, item=item, result=future.result(), error=None)
-            except BaseException as exc:
+            except Exception as exc:
                 yield BatchCompletion(index=index, item=item, result=None, error=exc)
 
 

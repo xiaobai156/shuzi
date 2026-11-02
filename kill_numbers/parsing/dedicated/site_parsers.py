@@ -9,7 +9,6 @@ from kill_numbers.parsing.common import (
     find_number_groups,
     filter_candidates_by_region,
     has_duplicate_numbers,
-    issue_segment_matches,
     normalize_region,
     valid_number,
 )
@@ -63,6 +62,214 @@ def _windowed_article_history_section(section: str, target: dict) -> str:
     return "\n".join(selected)
 
 
+def _chaoxi_hyphen_top_7_candidates(
+    text: str,
+    target: dict,
+) -> dict[str, list[list[str]]]:
+    if normalize_region(target.get("region")) != "top":
+        raise ValueError("潮汐文脉专属解析只允许 top")
+    if target.get("count") != 7:
+        raise ValueError("潮汐文脉专属解析要求 count=7")
+
+    page_text = html_to_text(text)
+    anchor = str(target.get("anchor") or "潮汐文脉")
+    anchor_index = find_anchor_index(page_text, anchor)
+    if anchor_index < 0:
+        raise ValueError(f"没有找到正文锚点：{anchor}")
+
+    stop_anchor = target.get("stop_anchor") or "上一篇"
+    stop_index = find_anchor_index(
+        page_text,
+        stop_anchor,
+        start=anchor_index + len(anchor),
+    )
+    section = page_text[anchor_index:stop_index if stop_index >= 0 else len(page_text)]
+    matches = all_issue_segment_matches(section)
+    if not matches:
+        raise ValueError("潮汐文脉专属栏目没有找到期数行")
+
+    header = section[: matches[0].start()]
+    keyword_list = [
+        normalize_keyword(keyword)
+        for keyword in (target.get("keywords") or [])
+        if keyword
+    ]
+    normalized_header = normalize_keyword(header)
+    if keyword_list and not any(keyword in normalized_header for keyword in keyword_list):
+        raise ValueError("潮汐文脉专属栏目标题缺少目标字段锚点")
+
+    expected_count = target.get("count")
+    rows: list[tuple[str, list[str], int]] = []
+    for match in matches:
+        segment = match.group(0)
+        groups = [
+            group
+            for group in find_number_groups(segment)
+            if len(group) == expected_count
+            and all(valid_number(number) for number in group)
+            and (
+                target.get("allow_duplicate_numbers", False)
+                or not has_duplicate_numbers(group)
+            )
+        ]
+        if len(groups) > 1:
+            preview = " | ".join(",".join(group) for group in groups[:5])
+            raise ValueError(
+                f"{normalize_issue(match.group(1))}期候选不唯一，已停止输出避免抓错：{preview}"
+            )
+        if groups:
+            rows.append((normalize_issue(match.group(1)), groups[0], match.start()))
+
+    if not rows:
+        raise ValueError("潮汐文脉专属栏目没有有效七码历史行")
+
+    window = _configured_candidate_window(target, "潮汐文脉专属栏目")
+    selected = rows[:window]
+    candidates: dict[str, list[list[str]]] = {}
+    for issue, numbers, _position in selected:
+        candidates.setdefault(issue, []).append(numbers)
+    return candidates
+
+
+def chaoxi_hyphen_top_7_available_issues(
+    text: str,
+    target: dict,
+) -> list[str]:
+    return list(_chaoxi_hyphen_top_7_candidates(text, target))
+
+
+def extract_chaoxi_hyphen_top_7_numbers(
+    text: str,
+    issues: list[str],
+    target: dict,
+) -> dict[str, list[str]]:
+    candidates = _chaoxi_hyphen_top_7_candidates(text, target)
+    found: dict[str, list[str]] = {}
+    for issue in (normalize_issue(item) for item in issues):
+        distinct: list[list[str]] = []
+        for numbers in candidates.get(issue, []):
+            if numbers not in distinct:
+                distinct.append(numbers)
+        if len(distinct) > 1:
+            preview = " | ".join(",".join(numbers) for numbers in distinct[:5])
+            raise ValueError(f"{issue}期候选不唯一，已停止输出避免抓错：{preview}")
+        if distinct:
+            found[issue] = distinct[0]
+    return found
+
+
+def extract_discuss_detail_top_10_numbers(
+    text: str,
+    issues: list[str],
+    target: dict,
+) -> dict[str, list[str]]:
+    if normalize_region(target.get("region")) != "top":
+        raise ValueError("讨论文章专属解析只允许 top")
+    if target.get("count") != 10:
+        raise ValueError("讨论文章专属解析要求 count=10")
+    return extract_issue_numbers(
+        text,
+        issues,
+        keywords=target.get("keywords"),
+        expected_count=target.get("count"),
+        strict_ambiguous=True,
+        allow_duplicate_numbers=target.get("allow_duplicate_numbers", False),
+        anchor=target.get("anchor"),
+        stop_anchor=target.get("stop_anchor"),
+        region="top",
+        issue_position_window=target.get("issue_position_window"),
+    )
+
+
+def _huaxianzi_bottom_7_candidates(
+    text: str,
+    target: dict,
+) -> dict[str, list[list[str]]]:
+    if normalize_region(target.get("region")) != "bottom":
+        raise ValueError("花仙子绝杀七码专属解析只允许 bottom")
+    if target.get("count") != 7:
+        raise ValueError("花仙子绝杀七码专属解析要求 count=7")
+
+    page_text = html_to_text(text)
+    anchor = str(target.get("anchor") or "")
+    anchor_positions = [
+        match.start() for match in re.finditer(re.escape(anchor), page_text)
+    ]
+    if len(anchor_positions) != 1:
+        raise ValueError(f"花仙子绝杀七码栏目锚点数量异常：{len(anchor_positions)}")
+
+    start = anchor_positions[0]
+    stop_anchor = str(target.get("stop_anchor") or "点击投注")
+    stop = find_anchor_index(page_text, stop_anchor, start=start + len(anchor))
+    if stop < 0:
+        raise ValueError("花仙子绝杀七码栏目缺少停止边界：点击投注")
+    section = page_text[start:stop]
+    keyword_list = [
+        normalize_keyword(keyword)
+        for keyword in (target.get("keywords") or [])
+        if keyword
+    ]
+    rows: list[tuple[str, list[str], int]] = []
+    for match in all_issue_segment_matches(section):
+        segment = match.group(0)
+        compact_segment = normalize_keyword(segment)
+        if keyword_list and not any(keyword in compact_segment for keyword in keyword_list):
+            continue
+        groups = [
+            group
+            for group in find_number_groups(segment)
+            if len(group) == 7
+            and all(valid_number(number) for number in group)
+            and (
+                target.get("allow_duplicate_numbers", False)
+                or not has_duplicate_numbers(group)
+            )
+        ]
+        if len(groups) > 1:
+            preview = " | ".join(",".join(group) for group in groups[:5])
+            raise ValueError(
+                f"{normalize_issue(match.group(1))}期候选不唯一，已停止输出避免抓错：{preview}"
+            )
+        if groups:
+            rows.append((normalize_issue(match.group(1)), groups[0], match.start()))
+
+    if not rows:
+        raise ValueError("花仙子绝杀七码栏目没有有效历史行")
+
+    window = _configured_candidate_window(target, "花仙子绝杀七码栏目")
+    candidates: dict[str, list[list[str]]] = {}
+    for issue, numbers, _position in rows[-window:]:
+        candidates.setdefault(issue, []).append(numbers)
+    return candidates
+
+
+def huaxianzi_bottom_7_available_issues(
+    text: str,
+    target: dict,
+) -> list[str]:
+    return list(_huaxianzi_bottom_7_candidates(text, target))
+
+
+def extract_huaxianzi_bottom_7_numbers(
+    text: str,
+    issues: list[str],
+    target: dict,
+) -> dict[str, list[str]]:
+    candidates = _huaxianzi_bottom_7_candidates(text, target)
+    found: dict[str, list[str]] = {}
+    for issue in (normalize_issue(item) for item in issues):
+        distinct: list[list[str]] = []
+        for numbers in candidates.get(issue, []):
+            if numbers not in distinct:
+                distinct.append(numbers)
+        if len(distinct) > 1:
+            preview = " | ".join(",".join(numbers) for numbers in distinct[:5])
+            raise ValueError(f"{issue}期候选不唯一，已停止输出避免抓错：{preview}")
+        if distinct:
+            found[issue] = distinct[0]
+    return found
+
+
 def extract_macau_baoma_numbers(
     text: str,
     issues: list[str],
@@ -78,8 +285,9 @@ def extract_macau_baoma_numbers(
     )
     for match in pattern.finditer(text):
         issue = normalize_issue(match.group(1))
-        numbers = re.findall(r"\d{2}", html_to_text(match.group(2)))
-        numbers = [number for number in numbers if valid_number(number)]
+        numbers = re.findall(r"\d+", html_to_text(match.group(2)))
+        if any(len(number) != 2 or not valid_number(number) for number in numbers):
+            continue
         if expected_count and len(numbers) != expected_count:
             continue
         rows.append((numbers, issue, match.start()))
@@ -198,7 +406,7 @@ def extract_top_article_history_current_cycle_numbers(
     issues: list[str],
     target: dict,
 ) -> dict[str, list[str]]:
-    """Extract current-cycle rows when the page also embeds a legacy cycle."""
+    """Extract current-cycle rows with or without an embedded legacy cycle."""
     region = normalize_region(target.get("region"))
     if region not in {"top", "bottom"}:
         raise ValueError("当前周期专属解析需要配置 top 或 bottom")
@@ -266,11 +474,14 @@ def extract_top_article_history_current_cycle_numbers(
         for index in range(1, len(rows))
         if rows[index - 1][0] == "365" and rows[index][0] == "1"
     ]
-    if len(cycle_seams) != 1:
+    if len(cycle_seams) > 1:
         raise ValueError(f"周期文档边界数量异常：{len(cycle_seams)}")
 
-    seam = cycle_seams[0]
-    blocks = [rows[:seam], rows[seam:]]
+    if cycle_seams:
+        seam = cycle_seams[0]
+        blocks = [rows[:seam], rows[seam:]]
+    else:
+        blocks = [rows]
     title_window = _configured_candidate_window(target, "当前周期")
     primary_block_index = 0 if region == "top" else len(blocks) - 1
     primary_block = blocks[primary_block_index]
@@ -293,27 +504,13 @@ def extract_top_article_history_current_cycle_numbers(
 
     found: dict[str, list[str]] = {}
     for requested_issue in (normalize_issue(issue) for issue in issues):
-        block_candidates: list[tuple[int, list[list[str]]]] = []
-        for block_index, block in enumerate(directional_blocks):
-            candidates = [
-                numbers
-                for issue, numbers, _position in block
-                if issue == requested_issue
-            ]
-            if candidates:
-                block_candidates.append((block_index, candidates))
-
-        if not block_candidates:
+        selected_candidates = [
+            numbers
+            for issue, numbers, _position in directional_blocks[primary_block_index]
+            if issue == requested_issue
+        ]
+        if not selected_candidates:
             continue
-
-        if len(block_candidates) > 1:
-            selected_candidates = next(
-                candidates
-                for block_index, candidates in block_candidates
-                if block_index == primary_block_index
-            )
-        else:
-            selected_candidates = block_candidates[0][1]
 
         distinct: list[list[str]] = []
         for numbers in selected_candidates:
@@ -380,7 +577,113 @@ def extract_huxin_xiaozhu_stable_10_numbers(
     )
 
 
-def xinzhu_forum_top_candidates(text: str, target: dict) -> dict[str, list[list[str]]]:
+YIRAN_GONGZHU_PART_ANCHORS = (
+    "依然公主尽位杀码",
+    "依然公主首位杀码",
+)
+
+
+def _yiran_gongzhu_bottom_6_candidates(
+    text: str,
+    target: dict,
+    *,
+    evidence: list[tuple[str, list[str], str, int, int, int]] | None = None,
+) -> dict[str, list[list[str]]]:
+    """Merge the two named 3-number columns from one article."""
+    if normalize_region(target.get("region")) != "bottom":
+        raise ValueError("依然公主专属解析只允许 bottom")
+    if target.get("count") != 6:
+        raise ValueError("依然公主专属解析要求 count=6")
+    if tuple(target.get("part_anchors") or ()) != YIRAN_GONGZHU_PART_ANCHORS:
+        raise ValueError("依然公主专属解析必须配置两个固定区块锚点")
+
+    page_text = html_to_text(text)
+    window = _configured_candidate_window(target, "依然公主专属栏目")
+    rows_by_part: dict[str, list[tuple[str, list[str], int, int]]] = {}
+    for part_anchor in YIRAN_GONGZHU_PART_ANCHORS:
+        rows: list[tuple[str, list[str], int, int]] = []
+        for match in all_issue_segment_matches(page_text):
+            segment = match.group(0)
+            if normalize_keyword(part_anchor) not in normalize_keyword(segment):
+                continue
+            groups = [
+                group
+                for group in find_number_groups(segment)
+                if len(group) == 3
+                and all(valid_number(number) for number in group)
+            ]
+            if len(groups) > 1:
+                raise ValueError(
+                    f"{normalize_issue(match.group(1))}期 {part_anchor}候选不唯一"
+                )
+            if groups:
+                rows.append(
+                    (
+                        normalize_issue(match.group(1)),
+                        groups[0],
+                        match.start(),
+                        match.end(),
+                    )
+                )
+        if not rows:
+            raise ValueError(f"依然公主缺少区块：{part_anchor}")
+        rows_by_part[part_anchor] = rows[-window:]
+
+    candidates: dict[str, list[list[str]]] = {}
+    by_issue = [
+        {
+            issue: (numbers, start, end)
+            for issue, numbers, start, end in rows
+        }
+        for rows in rows_by_part.values()
+    ]
+    for issue in by_issue[0]:
+        if issue not in by_issue[1]:
+            continue
+        first = by_issue[0][issue]
+        second = by_issue[1][issue]
+        numbers = first[0] + second[0]
+        if len(numbers) != 6 or has_duplicate_numbers(numbers):
+            raise ValueError(f"{issue}期合并号码有重复或数量错误")
+        candidates.setdefault(issue, []).append(numbers)
+        if evidence is not None:
+            evidence.append(
+                (
+                    issue,
+                    numbers,
+                    " + ".join(YIRAN_GONGZHU_PART_ANCHORS),
+                    min(first[1], second[1]),
+                    max(first[2], second[2]),
+                    min(first[1], second[1]),
+                )
+            )
+    return candidates
+
+
+def yiran_gongzhu_bottom_6_available_issues(text: str, target: dict) -> list[str]:
+    return list(_yiran_gongzhu_bottom_6_candidates(text, target))
+
+
+def extract_yiran_gongzhu_bottom_6_numbers(
+    text: str,
+    issues: list[str],
+    target: dict,
+) -> dict[str, list[str]]:
+    candidates = _yiran_gongzhu_bottom_6_candidates(text, target)
+    found: dict[str, list[str]] = {}
+    for issue in (normalize_issue(item) for item in issues):
+        distinct = []
+        for numbers in candidates.get(issue, []):
+            if numbers not in distinct:
+                distinct.append(numbers)
+        if len(distinct) > 1:
+            raise ValueError(f"{issue}期依然公主候选不唯一")
+        if distinct:
+            found[issue] = distinct[0]
+    return found
+
+
+def xinzhu_forum_top_candidates(text: str, target: dict, *, evidence=None) -> dict[str, list[list[str]]]:
     if normalize_region(target.get("region")) != "top":
         raise ValueError("新竹论坛绝杀十码专属解析只允许 top")
     if target.get("count") != 10:
@@ -414,6 +717,9 @@ def xinzhu_forum_top_candidates(text: str, target: dict) -> dict[str, list[list[
             if has_duplicate_numbers(numbers):
                 raise ValueError(f"{issue}期 号码有重复，已停止输出避免抓错")
             candidates.setdefault(issue, []).append(numbers)
+            if evidence is not None:
+                evidence.append((issue, numbers, heading.group(), heading.end(),
+                                 heading.end() + stop.start(), heading.end() + row.start()))
     return candidates
 
 
@@ -441,6 +747,7 @@ def extract_xinzhu_forum_stable_10_numbers(
 def _liuhe_bottom_10_candidates(
     text: str,
     target: dict,
+    *, evidence=None,
 ) -> dict[str, list[list[str]]]:
     if normalize_region(target.get("region")) != "bottom":
         raise ValueError("六合绝杀十码专属解析只允许 bottom")
@@ -460,19 +767,21 @@ def _liuhe_bottom_10_candidates(
         r"(?:⚔️\s*)?绝杀\s*(?:十|10)\s*码\s*(?:⚔️\s*)?"
         r"[\[【]\s*((?:\d{2}\s*[.,，。、]\s*){9}\d{2})\s*[\]】]"
     )
-    rows: list[tuple[str, list[str]]] = []
+    rows: list[tuple[str, list[str], int]] = []
     for row in row_pattern.finditer(page_text[headings[0].end():]):
         numbers = re.findall(r"\d{2}", row.group(2))
         if len(numbers) != 10 or any(not valid_number(number) for number in numbers):
             continue
         if has_duplicate_numbers(numbers):
             continue
-        rows.append((normalize_issue(row.group(1)), numbers))
+        rows.append((normalize_issue(row.group(1)), numbers, headings[0].end() + row.start()))
 
     window = _configured_candidate_window(target, "六合绝杀十码尾部")
     candidates: dict[str, list[list[str]]] = {}
-    for issue, numbers in rows[-window:]:
+    for issue, numbers, offset in rows[-window:]:
         candidates.setdefault(issue, []).append(numbers)
+        if evidence is not None:
+            evidence.append((issue, numbers, headings[0].group(), headings[0].end(), len(page_text), offset))
 
     return candidates
 
@@ -576,7 +885,7 @@ DEDICATED_TEN_ROW_CONTRACTS = {
 }
 
 
-def dedicated_ten_row_candidates(text: str, target: dict, parser_name: str) -> dict[str, list[list[str]]]:
+def dedicated_ten_row_candidates(text: str, target: dict, parser_name: str, *, evidence=None) -> dict[str, list[list[str]]]:
     contract = DEDICATED_TEN_ROW_CONTRACTS[parser_name]
     label = contract["label"]
     expected_region = contract["region"]
@@ -595,6 +904,8 @@ def dedicated_ten_row_candidates(text: str, target: dict, parser_name: str) -> d
             stop = re.search(r"\Z", page_text)
         else:
             raise ValueError(f"{label}专属栏目没有找到停止边界")
+    if stop is None:
+        raise ValueError(f"{label}专属栏目没有找到停止边界")
     section = page_text[headings[0].start():stop.start()]
 
     window = _configured_candidate_window(target, f"{label}")
@@ -620,7 +931,30 @@ def dedicated_ten_row_candidates(text: str, target: dict, parser_name: str) -> d
         if has_duplicate_numbers(numbers):
             raise ValueError(f"{issue}期 号码有重复，已停止输出避免抓错")
         candidates.setdefault(issue, []).append(numbers)
+        if evidence is not None:
+            evidence.append((issue, numbers, headings[0].group(), headings[0].start(),
+                             stop.start(), headings[0].start() + row.start()))
     return candidates
+
+
+def dedicated_candidate_location(text: str, target: dict, issue: str, numbers: list[str]):
+    """Return offsets from the same bounded rows used by the dedicated parser."""
+    parser = target.get('special_parser')
+    evidence = []
+    if parser == 'yiran_gongzhu_bottom_6':
+        _yiran_gongzhu_bottom_6_candidates(text, target, evidence=evidence)
+    elif parser == 'liuhe_bottom_10':
+        _liuhe_bottom_10_candidates(text, target, evidence=evidence)
+    elif parser == 'xinzhu_forum_stable_10':
+        xinzhu_forum_top_candidates(text, target, evidence=evidence)
+    elif parser in DEDICATED_TEN_ROW_CONTRACTS:
+        dedicated_ten_row_candidates(text, target, parser, evidence=evidence)
+    else:
+        return None
+    matches = [row[2:] for row in evidence if row[0] == issue and row[1] == numbers]
+    if not matches:
+        raise ValueError(f'{issue}期专属候选缺少同块偏移证据')
+    return matches[-1] if normalize_region(target.get('region')) == 'bottom' else matches[0]
 
 
 def dedicated_ten_available_issues(text: str, target: dict, parser_name: str) -> list[str]:
@@ -807,8 +1141,10 @@ def _identity_title_match(lines: list[str], identity: str) -> re.Match | None:
     for line in lines[:20]:
         if normalize_keyword(identity) in normalize_keyword(line):
             continue
+        # 站方标题可能写「293期：…」也可能写「293：【…】」（漏掉「期」字），
+        # 期号后允许「期」或紧跟冒号，其余契约不变。
         match = re.search(
-            r"(?<!\d)0?(\d{1,3})\s*期.{0,60}绝杀\s*(?:十|10|⑩)\s*码",
+            r"(?<!\d)0?(\d{1,3})\s*(?:期|[:：]).{0,60}绝杀\s*(?:十|10|⑩)\s*码",
             line,
         )
         if match:
@@ -944,7 +1280,11 @@ def extract_identity_article_top_10_numbers(
     return found
 
 
-def identity_article_bottom_10_candidates(text: str, target: dict) -> dict[str, list[list[str]]]:
+def identity_article_bottom_10_candidates(
+    text: str,
+    target: dict,
+    requested_issues: list[str] | None = None,
+) -> dict[str, list[list[str]]]:
     identity = str(target.get("article_identity") or "").strip()
     if not identity:
         raise ValueError("身份文章专属解析缺少 article_identity")
@@ -967,7 +1307,13 @@ def identity_article_bottom_10_candidates(text: str, target: dict) -> dict[str, 
     if not heading:
         raise ValueError(f"{identity}没有找到接口当前期绝杀十码标题")
 
-    rows: list[tuple[str, list[list[str]], int]] = []
+    requested_issue_set = {
+        normalize_issue(issue)
+        for issue in (requested_issues or [])
+        if str(issue).strip()
+    }
+    skip_historical_duplicate_rows = target.get("skip_historical_duplicate_rows") is True
+    rows: list[tuple[str, list[list[str]], int, bool]] = []
     for match in all_issue_segment_matches(page_text):
         segment = match.group(0)
         compact = normalize_keyword(segment)
@@ -980,15 +1326,29 @@ def identity_article_bottom_10_candidates(text: str, target: dict) -> dict[str, 
                 continue
             if numbers not in groups:
                 groups.append(numbers)
-        rows.append((normalize_issue(match.group(1)), groups, match.start()))
+        rows.append(
+            (
+                normalize_issue(match.group(1)),
+                groups,
+                match.start(),
+                any(has_duplicate_numbers(numbers) for numbers in groups),
+            )
+        )
 
     window = _configured_candidate_window(target, f"{identity}专属文章尾部")
-    selected = rows[-window:]
+    window_rows = rows
+    if skip_historical_duplicate_rows:
+        window_rows = [
+            row
+            for row in rows
+            if not row[3] or row[0] in requested_issue_set
+        ]
+    selected = window_rows[-window:]
     candidates: dict[str, list[list[str]]] = {}
-    for issue, groups, _position in selected:
+    for issue, groups, _position, has_duplicate in selected:
         if not groups:
             continue
-        if any(has_duplicate_numbers(numbers) for numbers in groups):
+        if has_duplicate:
             raise ValueError(f"{issue}期 号码有重复，已停止输出避免抓错")
         if len(groups) > 1:
             preview = " | ".join(",".join(numbers) for numbers in groups[:5])
@@ -1006,7 +1366,7 @@ def extract_identity_article_bottom_10_numbers(
     issues: list[str],
     target: dict,
 ) -> dict[str, list[str]]:
-    candidates = identity_article_bottom_10_candidates(text, target)
+    candidates = identity_article_bottom_10_candidates(text, target, issues)
     found: dict[str, list[str]] = {}
     for issue in (normalize_issue(item) for item in issues):
         distinct: list[list[str]] = []

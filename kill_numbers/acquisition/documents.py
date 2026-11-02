@@ -1,5 +1,6 @@
 import hashlib
 import re
+from collections.abc import Iterable
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
 from urllib.parse import urlparse
@@ -101,7 +102,11 @@ def _embedded_documents(
     decoded_priority: int,
     inline_priority: int,
     visible_kind: str,
+    authorization: str = "",
 ) -> list[SourceDocument]:
+    visible_metadata: dict[str, object] = {"parseable": True}
+    if authorization:
+        visible_metadata["authorization"] = authorization
     documents = [
         make_source_document(
             kind=visible_kind,
@@ -109,7 +114,7 @@ def _embedded_documents(
             parent_url=parent_url,
             content=visible_html_document(raw_html),
             priority=visible_priority,
-            metadata={"parseable": True},
+            metadata=visible_metadata,
         ),
         make_source_document(
             kind=f"{visible_kind}_source",
@@ -129,7 +134,10 @@ def _embedded_documents(
                 parent_url=page_url,
                 content="\n".join(decoded_values),
                 priority=decoded_priority,
-                metadata={"parseable": True},
+                metadata={
+                    "parseable": True,
+                    "authorization": authorization or "decoded_script",
+                },
             )
         )
     for index, value in enumerate(decoded_values):
@@ -151,15 +159,26 @@ def _embedded_documents(
                 parent_url=page_url,
                 content=value,
                 priority=inline_priority,
-                metadata={"parseable": True},
+                metadata={
+                    "parseable": True,
+                    "authorization": authorization or "inline_script",
+                },
             )
         )
     return documents
 
 
-def discover_static_documents(url: str) -> tuple[str, list[SourceDocument]]:
+def discover_static_documents(
+    url: str,
+    *,
+    encoding: str | None = None,
+) -> tuple[str, list[SourceDocument]]:
     page_url = remove_fragment(url)
-    raw_page = fetch_text(page_url)
+    raw_page = (
+        fetch_text(page_url)
+        if encoding is None
+        else fetch_text(page_url, encoding=encoding)
+    )
     documents = _embedded_documents(
         raw_page,
         page_url,
@@ -181,7 +200,12 @@ def discover_static_documents(url: str) -> tuple[str, list[SourceDocument]]:
 
     def fetch_child(kind_and_url: tuple[str, str]) -> tuple[str, str, str]:
         kind, child_url = kind_and_url
-        return kind, child_url, fetch_text(child_url)
+        content = (
+            fetch_text(child_url)
+            if encoding is None
+            else fetch_text(child_url, encoding=encoding)
+        )
+        return kind, child_url, content
 
     child_results: dict[tuple[str, str], str] = {}
     if child_requests:
@@ -211,7 +235,11 @@ def discover_static_documents(url: str) -> tuple[str, list[SourceDocument]]:
                     parent_url=page_url,
                     content=content,
                     priority=70,
-                    metadata={"parseable": True, "page_region": page_region},
+                    metadata={
+                        "parseable": True,
+                        "page_region": page_region,
+                        "authorization": "external_script",
+                    },
                 )
             )
             decoded_values = decode_strdecode_payloads(content)
@@ -223,7 +251,11 @@ def discover_static_documents(url: str) -> tuple[str, list[SourceDocument]]:
                         parent_url=child_url,
                         content="\n".join(decoded_values),
                         priority=75,
-                        metadata={"parseable": True, "page_region": page_region},
+                        metadata={
+                            "parseable": True,
+                            "page_region": page_region,
+                            "authorization": "decoded_script",
+                        },
                     )
                 )
             for index, decoded in enumerate(decoded_values):
@@ -252,6 +284,7 @@ def discover_static_documents(url: str) -> tuple[str, list[SourceDocument]]:
                 decoded_priority=65,
                 inline_priority=60,
                 visible_kind="iframe",
+                authorization="iframe",
             )
         )
 
@@ -262,11 +295,23 @@ def discover_static_documents(url: str) -> tuple[str, list[SourceDocument]]:
     return name, documents
 
 
-def parseable_documents(documents: list[SourceDocument]) -> list[SourceDocument]:
+def parseable_documents(
+    documents: list[SourceDocument],
+    allowed_source_types: Iterable[str] | None = None,
+) -> list[SourceDocument]:
+    allowed = {
+        str(value).strip()
+        for value in (allowed_source_types or [])
+        if str(value).strip()
+    }
     return [
         document
         for document in documents
         if document.metadata.get("parseable", True) and document.content.strip()
+        and (
+            not document.metadata.get("authorization")
+            or document.metadata.get("authorization") in allowed
+        )
     ]
 
 

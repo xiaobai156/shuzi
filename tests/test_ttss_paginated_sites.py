@@ -138,6 +138,37 @@ def test_paginated_chain_scans_all_pages_and_keeps_detail_evidence(monkeypatch):
     ]
 
 
+def test_paginated_chain_discovers_available_issues_without_opening_details(monkeypatch):
+    pages = {
+        LINK_TARGET["url"]: [
+            source(
+                LINK_TARGET["url"],
+                "<a href='article.aspx?id=one'>218期: 告别那时【绝杀10码】</a>"
+                "<a href='list.aspx?id=79&page=2'>下一页</a>",
+            )
+        ],
+        "https://a.ttss.vip/list.aspx?id=79&page=2": [
+            source(
+                "https://a.ttss.vip/list.aspx?id=79&page=2",
+                "<a href='article.aspx?id=two'>217期: 告别那时【绝杀10码】</a>",
+            )
+        ],
+    }
+    seen = []
+
+    def fake_discover(url):
+        seen.append(url)
+        return "中彩堂", pages[url]
+
+    monkeypatch.setattr(crawler, "discover_static_documents", fake_discover)
+
+    assert crawler.discover_acquisition_only_available_issues(LINK_TARGET) == ["218", "217"]
+    assert seen == [
+        LINK_TARGET["url"],
+        "https://a.ttss.vip/list.aspx?id=79&page=2",
+    ]
+
+
 def test_paginated_chain_rejects_distinct_duplicate_article_links(monkeypatch):
     pages = {
         LINK_TARGET["url"]: [
@@ -217,7 +248,7 @@ def test_formal_ttss_targets_are_configured_with_approved_history_exception():
         assert target["special_parser"] == "ttss_paginated_identity_top_10"
         assert target["region"] == "top"
         assert target["count"] == 10
-        assert target["pagination_limit"] == 9
+        assert target["pagination_limit"] == 40
         exception = target["onboarding_exception"]
         assert exception["type"] == "insufficient_history"
         assert exception["approved"] is True

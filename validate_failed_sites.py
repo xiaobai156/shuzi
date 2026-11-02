@@ -1,6 +1,5 @@
 import argparse
 import copy
-import re
 import tempfile
 import threading
 from contextlib import contextmanager
@@ -270,7 +269,7 @@ def build_argument_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def main(argv: list[str] | None = None) -> int:
+def _main_unlocked(argv: list[str] | None = None) -> int:
     args = build_argument_parser().parse_args(argv)
     try:
         issues = crawler.parse_issues(args.issues)
@@ -304,6 +303,13 @@ def main(argv: list[str] | None = None) -> int:
     validations = validate_targets(selected, issues, workers=args.workers)
     print_validations(validations)
     return 0 if not missing and all(item.passed for item in validations) else 1
+
+
+def main(argv: list[str] | None = None) -> int:
+    try:
+        return _main_unlocked(argv)
+    finally:
+        crawler.close_browser_pool()
 
 
 if __name__ == "__main__":

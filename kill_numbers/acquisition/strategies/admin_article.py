@@ -22,7 +22,7 @@ PageRenderer = Callable[[str], str]
 
 
 def parse_admin_article_id(url: str) -> str | None:
-    match = re.search(r"/article/admin/([^/?#]+)", url)
+    match = re.search(r"/article/(?:admin|manager|lottery)/([^/?#]+)", url, re.I)
     return match.group(1) if match else None
 
 
@@ -97,14 +97,19 @@ def validate_identity_article_api_data(data: dict, target: dict) -> None:
         raise ValueError(f"{identity}接口标题不匹配：没有找到绝杀十码")
 
 
-def crawl_configured_api_page(url: str, target: dict) -> tuple[str, str]:
-    api_url = str(target.get("api_url") or "").strip()
-    if not api_url:
-        raise ValueError("站点缺少 api_url")
-    data = fetch_json(api_url)
-    if target.get("special_parser") == "identity_article_bottom_10":
-        validate_identity_article_api_data(data, target)
-    return admin_article_dict_to_content(data, url)
+def validate_admin_article_record(data: object, article_id: str, target: dict | None) -> dict:
+    if not isinstance(data, dict):
+        raise ValueError("文章接口返回格式异常")
+    actual_id = str(data.get("id") or "").strip()
+    if actual_id != article_id:
+        raise ValueError(f"文章 ID 不一致：期望 {article_id}，实际 {actual_id or '空'}")
+    if (target or {}).get("special_parser") == "identity_article_bottom_10":
+        validate_identity_article_api_data(data, target or {})
+    return data
+
+
+def admin_article_body(data: dict) -> str:
+    return str(data.get("html") or data.get("content") or "").strip()
 
 
 def fetch_admin_article_from_landing(url: str, article_id: str) -> dict:
@@ -131,26 +136,35 @@ def crawl_admin_article_page(
     if not article_id:
         raise ValueError("没有找到文章 ID")
 
-    api_error = None
     try:
-        data = fetch_json(admin_article_api_url(url, target))
-        name, content = admin_article_dict_to_content(data, url)
-        if content_matches(content, target, issues):
-            return name, content
+        data = validate_admin_article_record(
+            fetch_json(admin_article_api_url(url, target)),
+            article_id,
+            target,
+        )
     except Exception as exc:
-        api_error = exc
+        if not is_http_404(exc):
+            raise
+        data = None
+    else:
+        if admin_article_body(data):
+            name, content = admin_article_dict_to_content(data, url)
+            return name, content
 
     try:
-        data = fetch_admin_article_from_landing(url, article_id)
-        name, content = admin_article_dict_to_content(data, url)
-        if content_matches(content, target, issues):
-            return name, content
+        landing_data = fetch_admin_article_from_landing(url, article_id)
     except Exception:
-        if api_error and not is_http_404(api_error):
-            raise api_error
-        raise
+        landing_data = None
+    if landing_data is not None:
+        landing_data = validate_admin_article_record(landing_data, article_id, target)
+        if admin_article_body(landing_data):
+            name, content = admin_article_dict_to_content(landing_data, url)
+            return name, content
 
-    raw_page = fetch_text(remove_fragment(url))
+    try:
+        raw_page = fetch_text(remove_fragment(url))
+    except Exception:
+        raw_page = ""
     if content_matches(raw_page, target, issues):
         name = extract_name_from_text(raw_page, fallback=urlparse(url).netloc)
         return name, raw_page

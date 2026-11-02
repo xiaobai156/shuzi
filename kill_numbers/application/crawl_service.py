@@ -8,7 +8,11 @@ from kill_numbers.acquisition.browser_pool import render_page_documents
 from kill_numbers.acquisition.documents import document_debug_text
 from kill_numbers.application.batch_service import iter_completed_batch
 from kill_numbers.domain.models import CrawlFailure, CrawlResult, SourceDocument
-from kill_numbers.parsing.common import CANDIDATE_REGION_WINDOW, manual_risk_reason
+from kill_numbers.parsing.common import (
+    CANDIDATE_REGION_WINDOW,
+    manual_risk_reason,
+    target_issue_region,
+)
 from kill_numbers.parsing.diagnostics import (
     detect_available_issues,
     diagnose_issue_mismatch,
@@ -22,7 +26,7 @@ from kill_numbers.parsing.dedicated.site_parsers import (
     xinzhu_forum_top_candidates,
 )
 from kill_numbers.parsing.registry import parse_target_content
-from kill_numbers.text_utils import clean_name
+from kill_numbers.text_utils import clean_name, normalize_issue
 from kill_numbers.validation.result_validator import (
     evidence_from_source_document,
     validate_issue_map,
@@ -85,7 +89,7 @@ def run_formal_crawl_target(
 ) -> tuple[list[CrawlResult], CrawlFailure | None]:
     """Run the sole formal per-site pipeline without letting entrypoints parse data."""
     url = str(target["url"])
-    configured_name = clean_name(target.get("name") or "")
+    configured_name = str(target.get("name") or "").strip() or "未命名"
     content = ""
     name = configured_name
     issue_map: dict[str, list[str]] | None = None
@@ -93,6 +97,8 @@ def run_formal_crawl_target(
     selected_document: SourceDocument | None = None
     selected_documents_by_issue: dict[str, SourceDocument] = {}
 
+    if target.get('disabled'):
+        return [], CrawlFailure(url=url, name=configured_name, reason='目标已停用，禁止抓取')
     risk = manual_risk_reason(target)
     if risk:
         return [], CrawlFailure(
@@ -123,15 +129,26 @@ def run_formal_crawl_target(
 
         name = configured_name if configured_name != "未命名" else auto_name
         if source_documents is not None:
-            issue_map, selected_document = dependencies.parse_target_documents(
-                source_documents,
-                target,
-                issues,
-            )
+            def parse_each_issue() -> tuple[dict[str, list[str]], dict[str, SourceDocument]]:
+                combined: dict[str, list[str]] = {}
+                documents_by_issue: dict[str, SourceDocument] = {}
+                for requested_issue in issues:
+                    issue = normalize_issue(requested_issue)
+                    partial, document = dependencies.parse_target_documents(
+                        source_documents or [],
+                        target,
+                        [issue],
+                    )
+                    if issue in partial and document is not None:
+                        combined[issue] = partial[issue]
+                        documents_by_issue[issue] = document
+                return combined, documents_by_issue
+
+            issue_map, selected_documents_by_issue = parse_each_issue()
             requested_issue_set = {
-                str(issue).strip()
+                normalize_issue(issue)
                 for issue in issues
-                if str(issue).strip()
+                if normalize_issue(issue)
             }
             parsed_issue_set = set(issue_map or {})
             if not requested_issue_set.issubset(parsed_issue_set) and (
@@ -139,21 +156,26 @@ def run_formal_crawl_target(
                 or dependencies.contract_is_split_across_documents(source_documents, target)
             ):
                 try:
-                    browser_documents = render_page_documents(url)
-                except Exception:
-                    browser_documents = []
+                    if target.get("browser_wait_until"):
+                        browser_documents = render_page_documents(
+                            url,
+                            wait_until=str(target["browser_wait_until"]),
+                        )
+                    else:
+                        browser_documents = render_page_documents(url)
+                except Exception as exc:
+                    raise RuntimeError(f"浏览器抓取失败：{exc}") from exc
                 if browser_documents:
                     source_documents.extend(browser_documents)
-                    issue_map, selected_document = dependencies.parse_target_documents(
-                        source_documents,
-                        target,
-                        issues,
-                    )
-            content = (
-                selected_document.content
-                if selected_document is not None
-                else document_debug_text(source_documents)
-            )
+                    issue_map, selected_documents_by_issue = parse_each_issue()
+            selected_values = []
+            selected_ids = set()
+            for document in selected_documents_by_issue.values():
+                if id(document) not in selected_ids:
+                    selected_ids.add(id(document))
+                    selected_values.append(document)
+            selected_document = selected_values[0] if len(selected_values) == 1 else None
+            content = selected_document.content if selected_document else document_debug_text(source_documents)
         elif issue_map is None:
             issue_map = parse_target_content(content, target, issues)
         if not issue_map:
@@ -226,7 +248,7 @@ def run_formal_crawl_target(
                 keywords=target.get("keywords"),
                 expected_count=target.get("count"),
                 allow_duplicate_numbers=target.get("allow_duplicate_numbers", False),
-                region=target.get("region"),
+                region=target_issue_region(target),
                 anchor=target.get("anchor"),
                 stop_anchor=target.get("stop_anchor"),
                 issue_position_window=target.get("issue_position_window"),
@@ -239,7 +261,7 @@ def run_formal_crawl_target(
                 allow_duplicate_numbers=target.get("allow_duplicate_numbers", False),
                 anchor=target.get("anchor"),
                 stop_anchor=target.get("stop_anchor"),
-                region=target.get("region"),
+                region=target_issue_region(target),
                 issue_position_window=target.get("issue_position_window"),
             )
             wanted = ",".join(f"{issue}期" for issue in issues)
@@ -268,8 +290,12 @@ def run_formal_crawl_target(
             source_documents=selected_documents_by_issue,
             require_source_document=True,
         )
-        results = [
-            CrawlResult(
+        results = []
+        for issue, numbers in issue_map.items():
+            source_document = selected_documents_by_issue.get(issue, selected_document)
+            if source_document is None:
+                raise ValueError(f"{issue}期来源文档证据缺失")
+            results.append(CrawlResult(
                 url=url,
                 name=name,
                 issue=issue,
@@ -278,11 +304,9 @@ def run_formal_crawl_target(
                     target,
                     issue,
                     numbers,
-                    selected_documents_by_issue.get(issue, selected_document),
+                    source_document,
                 ),
-            )
-            for issue, numbers in issue_map.items()
-        ]
+            ))
         return results, None
 
     except Exception as exc:

@@ -41,7 +41,18 @@ def origin(url: str) -> str:
 
 
 def normalize_issue(issue: str) -> str:
-    return str(int(str(issue).strip().replace("期", "")))
+    match = re.fullmatch(r"0*([1-9][0-9]{0,2})\s*期?", str(issue).strip())
+    if not match:
+        raise ValueError(f"期数必须是1至999的整数：{issue!r}")
+    return str(int(match.group(1)))
+
+
+def optional_issue(issue) -> str | None:
+    """把候选期数转成规范期数；非法候选（如页面里的“中:0期”）返回 None，不抛错。"""
+    try:
+        return normalize_issue(issue)
+    except (TypeError, ValueError):
+        return None
 
 
 def parse_issues(raw: str) -> list[str]:

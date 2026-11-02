@@ -5,19 +5,20 @@ import check_duplicates
 import crawler
 import pytest
 from kill_numbers.domain.models import CrawlFailure, CrawlResult
+from kill_numbers.infrastructure.cache_format import build_cache_document, records_from_cache_document
 from kill_numbers.infrastructure.cache_repository import update_recent_duplicate_cache
 
 
 @pytest.mark.parametrize(
     ("total_targets", "success_targets", "expected"),
     [
-        (20, 17, False),
-        (20, 18, True),
-        (100, 85, False),
-        (100, 86, True),
+        (20, 15, False),
+        (20, 17, True),
+        (100, 80, False),
+        (100, 81, True),
     ],
 )
-def test_cache_update_requires_success_rate_above_85_percent(
+def test_cache_update_requires_success_rate_above_80_percent(
     total_targets, success_targets, expected
 ):
     assert (
@@ -62,7 +63,7 @@ def test_failed_single_period_removes_stale_success_and_records_failure_state(tm
     )
 
     data = json.loads(path.read_text(encoding="utf-8"))
-    assert data["records"] == [
+    assert records_from_cache_document(data) == [
         {
             "name": "成功站",
             "url": "https://ok.test",
@@ -111,6 +112,44 @@ def test_cache_validation_accepts_failure_state_without_exposing_it_as_numbers(t
 
     assert [(record.name, record.issue, record.numbers) for record in records] == [
         ("成功站", "215期", "05,06")
+    ]
+
+
+def test_cache_state_exposes_saved_failures_as_problems(tmp_path):
+    path = tmp_path / "recent_10_cache.json"
+    data = {
+        "version": 1,
+        "generated_at": "2026-08-04T00:00:00",
+        "recent_count": 10,
+        "records": [
+            {
+                "name": "成功站",
+                "url": "https://ok.test",
+                "issue": "215",
+                "numbers": "05,06",
+            }
+        ],
+        "failures": [
+            {
+                "name": "失败站",
+                "url": "https://failed.test",
+                "issue": "215",
+                "status": "failed",
+                "reason": "指定期数缺失",
+            }
+        ],
+    }
+    path.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
+
+    records, problems = check_duplicates.load_cache_state(path, expected_recent_count=10)
+
+    assert [(record.name, record.issue) for record in records] == [("成功站", "215期")]
+    assert problems == [
+        check_duplicates.CrawlProblem(
+            "失败站",
+            "https://failed.test",
+            "215期缓存失败：指定期数缺失",
+        )
     ]
 
 
@@ -176,6 +215,88 @@ def test_cache_write_failure_is_reported_without_replacing_realtime_result(tmp_p
     assert output.read_text(encoding="utf-8") == "05,06 成功站\n"
 
 
+def test_cache_update_rejects_stale_target_contract_without_overwriting(tmp_path):
+    path = tmp_path / "recent_10_cache.json"
+    original_target = {
+        "name": "测试站",
+        "url": "https://example.test/topic/1",
+        "count": 3,
+        "region": "top",
+        "anchor": "旧栏目",
+    }
+    path.write_text(
+        json.dumps(
+            build_cache_document(
+                [
+                    {
+                        "name": original_target["name"],
+                        "url": original_target["url"],
+                        "issue": "215",
+                        "numbers": "01,02,03",
+                    }
+                ],
+                [],
+                10,
+                targets=[original_target],
+            ),
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+    before = path.read_bytes()
+    changed_target = {**original_target, "anchor": "新栏目"}
+
+    with pytest.raises(ValueError, match="配置指纹不匹配"):
+        update_recent_duplicate_cache(
+            path,
+            [CrawlResult(changed_target["url"], changed_target["name"], "216", ["04", "05", "06"])],
+            ["216"],
+            targets=[changed_target],
+        )
+
+    assert path.read_bytes() == before
+
+
+def test_cache_update_rejects_invalid_historical_numbers_without_overwriting(tmp_path):
+    path = tmp_path / "recent_10_cache.json"
+    target = {
+        "name": "测试站",
+        "url": "https://example.test/topic/1",
+        "count": 3,
+        "region": "top",
+    }
+    path.write_text(
+        json.dumps(
+            build_cache_document(
+                [
+                    {
+                        "name": target["name"],
+                        "url": target["url"],
+                        "issue": "215",
+                        "numbers": "01,02,50",
+                    }
+                ],
+                [],
+                10,
+                targets=[target],
+            ),
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+    before = path.read_bytes()
+
+    with pytest.raises(ValueError, match="历史号码无效"):
+        update_recent_duplicate_cache(
+            path,
+            [CrawlResult(target["url"], target["name"], "216", ["04", "05", "06"])],
+            ["216"],
+            targets=[target],
+        )
+
+    assert path.read_bytes() == before
+
+
 def test_realtime_pipeline_finalizes_outputs_before_cache_update(tmp_path, monkeypatch):
     target = {
         "url": "https://example.test/topic/215",
@@ -209,7 +330,7 @@ def test_realtime_pipeline_finalizes_outputs_before_cache_update(tmp_path, monke
     assert events == ["outputs", "cache"]
 
 
-def test_realtime_pipeline_leaves_cache_unchanged_at_or_below_85_percent(monkeypatch):
+def test_realtime_pipeline_leaves_cache_unchanged_at_or_below_80_percent(monkeypatch):
     targets = [
         {
             "url": f"https://example.test/topic/{index}",
@@ -230,7 +351,7 @@ def test_realtime_pipeline_leaves_cache_unchanged_at_or_below_85_percent(monkeyp
                 ["01", "02", "03"],
             )
         ]
-        for index in range(17)
+        for index in range(15)
     }
     failed_results = {
         index: CrawlFailure(
@@ -238,7 +359,7 @@ def test_realtime_pipeline_leaves_cache_unchanged_at_or_below_85_percent(monkeyp
             targets[index]["name"],
             "指定期数缺失",
         )
-        for index in range(17, 20)
+        for index in range(15, 20)
     }
     events = []
 

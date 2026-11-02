@@ -19,7 +19,7 @@ def _write_bytes(path: Path, data: bytes) -> None:
 
 LINE = re.compile(r"^(?:\[[^]]+\]\s+)?(?P<name>.+?)\s+(?:(?P<region>top|bottom)\s+)?(?P<url>https?://\S+)\s+.*$")
 
-def retry_failed_file(failure_file: Path, issue: str) -> tuple[int, int, int]:
+def retry_failed_file(failure_file: Path, issue: str, update_cache: bool = False) -> tuple[int, int, int]:
     expected = re.fullmatch(r"(\d+)期-杀数字-失败\.txt", failure_file.name)
     if not expected or expected.group(1) != str(issue):
         print("失败文件与期数不一致"); return 0, 0, 2
@@ -54,6 +54,7 @@ def retry_failed_file(failure_file: Path, issue: str) -> tuple[int, int, int]:
             if original.strip(): unmatched += 1
     if not jobs: print("没有可重抓的失败站点"); return 0, 0, 2 if unmatched else 0
     keep = set(range(len(lines))); completed = 0; success_count = 0; removed = False; original_debug = crawler.save_debug_page
+    cache_results = []; cache_failures = []
     crawler.save_debug_page = lambda *a, **k: None
     try:
         for indexes, target in jobs.values():
@@ -64,9 +65,19 @@ def retry_failed_file(failure_file: Path, issue: str) -> tuple[int, int, int]:
                     print(f"[{target.get('name')}] 本轮校验失败：{validation_error}")
                     continue
                 if failure or not results:
-                    if failure: print(f"[{target.get('name')}] 本轮失败：{failure.reason}")
+                    if failure:
+                        print(f"[{target.get('name')}] 本轮失败：{failure.reason}")
+                        cache_failures.append(failure)
                     continue
                 result_file = crawler.RESULTS_DIR / f"{issue}期-杀数字-成功.txt"
+                # 成功 TXT 存在但为 0 字节 => 已被清空，此时继续写会把整期结果
+                # 覆盖成“只剩本次重抓的几行”（曾真实发生），必须硬失败。
+                # 文件完全不存在则视为本期首次创建，允许写入但明确告警。
+                if result_file.exists() and not result_file.read_bytes().strip():
+                    print(f"成功 TXT 已被清空，已停止写入：{result_file}")
+                    return len(jobs), completed, 1
+                if not result_file.exists():
+                    print(f"注意：成功 TXT 不存在，本次将新建：{result_file}")
                 old_bytes = result_file.read_bytes() if result_file.exists() else b""
                 old = old_bytes.decode("utf-8-sig").splitlines() if old_bytes else []
                 conflict = False
@@ -82,34 +93,56 @@ def retry_failed_file(failure_file: Path, issue: str) -> tuple[int, int, int]:
                         separator = ending if old_bytes and not old_bytes.endswith((b"\r", b"\n")) else b""
                         if result_file.exists() and result_file.read_bytes() != old_bytes:
                             raise OSError("成功TXT在处理期间被修改，停止覆盖")
+                        before_lines = len(old_bytes.splitlines())
                         _write_bytes(result_file, old_bytes + separator + ending.join(x.encode() for x in added) + ending)
+                        after_lines = len(result_file.read_bytes().splitlines())
+                        if after_lines < before_lines + len(added):
+                            raise OSError(
+                                f"成功TXT写入后行数异常（{before_lines}+{len(added)} -> {after_lines}），已停止"
+                            )
                     success_count += 1
                     for index in indexes: keep.discard(index)
                     removed = True
                     completed += 1
+                    cache_results.extend(results)
             except Exception as exc: print(f"重抓失败：{target.get('name')}：{exc}")
     finally: crawler.save_debug_page = original_debug
     if removed:
         if raw != failure_file.read_bytes():
             print("失败 TXT 在处理期间被外部修改，停止写回"); return len(jobs), completed, 1
         try:
-            _write_bytes(failure_file, (b"\xef\xbb\xbf" if raw.startswith(b"\xef\xbb\xbf") else b"") + "".join(lines[i] for i in sorted(keep)).encode())
+            content = "".join(lines[i] for i in sorted(keep))
+            if content.strip():
+                _write_bytes(failure_file, (b"\xef\xbb\xbf" if raw.startswith(b"\xef\xbb\xbf") else b"") + content.encode())
+            else:
+                # 全部失败块已清除时不留空文件，与正式单期流程（0 失败即删除失败 TXT）保持一致
+                crawler.remove_stale_failure_file(str(failure_file), skip_backup=True)
         except OSError as exc:
             print(f"成功 TXT 已保存，失败 TXT 仍保留；写入失败：{exc}")
             return len(jobs), completed, 1
     remaining = sum(1 for i in keep if lines[i].strip())
     status = 0 if remaining == 0 else 1
-    print(f"定向重抓：{len(jobs)} 个，成功：{completed} 个，仍失败：{remaining} 个，缓存：未修改")
+    cache_note = "未修改"
+    if update_cache:
+        cache_error = crawler.persist_cache_after_realtime_result(
+            crawler.CACHE_FILE, cache_results, cache_failures, [issue]
+        )
+        if cache_error:
+            cache_note = f"更新未完成：{cache_error}"
+            status = crawler.CACHE_UPDATE_FAILED_EXIT_CODE
+        else:
+            cache_note = f"已更新 {len(cache_results)} 站当期结果"
+    print(f"定向重抓：{len(jobs)} 个，成功：{completed} 个，仍失败：{remaining} 个，缓存：{cache_note}")
     return len(jobs), success_count, status
 
 def main() -> int:
-    p = argparse.ArgumentParser(description="只重抓失败TXT中的站点"); p.add_argument("issue", type=int, nargs="?"); a = p.parse_args()
+    p = argparse.ArgumentParser(description="只重抓失败TXT中的站点"); p.add_argument("issue", type=int, nargs="?"); p.add_argument("--update-cache", action="store_true", help="成功后按正式单期流程只更新本次重抓站点的当期缓存"); a = p.parse_args()
     if a.issue is None:
         try: a.issue = int(input("请输入期数：").strip())
         except (ValueError, EOFError): p.error("期数必须是正整数")
     if a.issue < 1: p.error("期数必须是正整数")
     with exclusive_run_lock(Path(crawler.SCRIPT_DIR) / ".crawler-and-duplicates.lock"):
-        return retry_failed_file(crawler.RESULTS_DIR / f"{a.issue}期-杀数字-失败.txt", str(a.issue))[2]
+        return retry_failed_file(crawler.RESULTS_DIR / f"{a.issue}期-杀数字-失败.txt", str(a.issue), a.update_cache)[2]
 
 if __name__ == "__main__":
     try: raise SystemExit(main())

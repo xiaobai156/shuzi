@@ -1,9 +1,30 @@
 from collections.abc import Callable
 from dataclasses import dataclass
+import re
 
-from kill_numbers.parsing.common import extract_issue_numbers
+from kill_numbers.parsing.common import extract_issue_numbers, target_issue_region
 from kill_numbers.parsing.diagnostics import detect_available_issues
+from kill_numbers.parsing.dom_scope import content_section
 from kill_numbers.parsing.dedicated import site_parsers as dedicated
+from kill_numbers.text_utils import normalize_keyword, origin
+
+
+def target_for_document(target: dict, document) -> dict:
+    """Only a verified user API identity can replace an absent inline author."""
+    scoped = dict(target)
+    if 'allowed_row_starts' in document.metadata:
+        scoped['_allowed_row_starts'] = document.metadata['allowed_row_starts']
+    if scoped.get('source_url_pattern') and scoped.get('source_anchor'):
+        scoped['anchor'] = scoped['source_anchor']
+    user = re.search(r'/users/(\d+)(?:[/?#]|$)', str(target.get('url') or ''))
+    if (user and document.kind == 'user_forum_topic'
+            and document.metadata.get('identity_verified') is True
+            and document.metadata.get('user_id') == user.group(1)
+            and document.metadata.get('identity_source') == f"{origin(target['url'])}/api/v1/users/{user.group(1)}"
+            and document.identity
+            and normalize_keyword(document.identity) == normalize_keyword(str(scoped.get('anchor') or ''))):
+        scoped['anchor'] = ''
+    return scoped
 
 
 ParseFunction = Callable[[str, list[str], dict], dict[str, list[str]]]
@@ -17,6 +38,11 @@ class ParserAdapter:
 
 
 def parse_generic(content: str, issues: list[str], target: dict) -> dict[str, list[str]]:
+    if target.get('content_class'):
+        content, offset = content_section(content, target)
+        target = {**target, 'anchor': None, 'stop_anchor': None}
+        if '_allowed_row_starts' in target:
+            target['_allowed_row_starts'] = {start - offset for start in target['_allowed_row_starts']}
     return extract_issue_numbers(
         content,
         issues,
@@ -27,13 +53,20 @@ def parse_generic(content: str, issues: list[str], target: dict) -> dict[str, li
         allow_duplicate_numbers=target.get("allow_duplicate_numbers", False),
         anchor=target.get("anchor"),
         stop_anchor=target.get("stop_anchor"),
-        region=target.get("region"),
+        region=target_issue_region(target),
         issue_position_window=target.get("issue_position_window"),
+        allowed_row_starts=target.get('_allowed_row_starts'),
+        prefer_pending=target.get("prefer_pending_candidate", False),
     )
 
 
 def available_generic(content: str, target: dict) -> list[str]:
-    return detect_available_issues(
+    if target.get('content_class'):
+        content, offset = content_section(content, target)
+        target = {**target, 'anchor': None, 'stop_anchor': None, 'content_class': None}
+        if '_allowed_row_starts' in target:
+            target['_allowed_row_starts'] = {start - offset for start in target['_allowed_row_starts']}
+    available = detect_available_issues(
         content,
         keywords=target.get("keywords"),
         expected_count=target.get("count"),
@@ -41,9 +74,12 @@ def available_generic(content: str, target: dict) -> list[str]:
         allow_duplicate_numbers=target.get("allow_duplicate_numbers", False),
         anchor=target.get("anchor"),
         stop_anchor=target.get("stop_anchor"),
-        region=target.get("region"),
+        region=target_issue_region(target),
         issue_position_window=target.get("issue_position_window"),
     )
+    if '_allowed_row_starts' in target:
+        return [issue for issue in available if issue in parse_generic(content,[issue],target)]
+    return available
 
 
 def _count_parser(function: Callable) -> ParseFunction:
@@ -119,6 +155,22 @@ PARSERS: dict[str, ParserAdapter] = {
         _target_parser(dedicated.extract_identity_article_top_10_numbers),
         _target_available(dedicated.identity_article_top_10_available_issues),
     ),
+    "chaoxi_hyphen_top_7": ParserAdapter(
+        _target_parser(dedicated.extract_chaoxi_hyphen_top_7_numbers),
+        _target_available(dedicated.chaoxi_hyphen_top_7_available_issues),
+    ),
+    "discuss_detail_top_10": ParserAdapter(
+        _target_parser(dedicated.extract_discuss_detail_top_10_numbers),
+        available_generic,
+    ),
+    "discuss_user_release_top_10": ParserAdapter(
+        _target_parser(dedicated.extract_discuss_detail_top_10_numbers),
+        available_generic,
+    ),
+    "huaxianzi_bottom_7": ParserAdapter(
+        _target_parser(dedicated.extract_huaxianzi_bottom_7_numbers),
+        _target_available(dedicated.huaxianzi_bottom_7_available_issues),
+    ),
     "fengwu_jiutian_bottom_10": ParserAdapter(
         _target_parser(dedicated.extract_fengwu_jiutian_bottom_10_numbers),
         _target_available(dedicated.fengwu_jiutian_bottom_10_available_issues),
@@ -126,6 +178,10 @@ PARSERS: dict[str, ParserAdapter] = {
     "qiancai_liangde_bottom_10": ParserAdapter(
         _target_parser(dedicated.extract_qiancai_liangde_bottom_10_numbers),
         _target_available(dedicated.qiancai_liangde_bottom_10_available_issues),
+    ),
+    "yiran_gongzhu_bottom_6": ParserAdapter(
+        _target_parser(dedicated.extract_yiran_gongzhu_bottom_6_numbers),
+        _target_available(dedicated.yiran_gongzhu_bottom_6_available_issues),
     ),
 }
 

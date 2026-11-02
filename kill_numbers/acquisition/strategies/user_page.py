@@ -22,15 +22,20 @@ def parse_user_id(url: str) -> str | None:
 def crawl_user_documents(
     url: str,
     *,
+    page_limit: int = 5,
     fetch_json_value: JsonFetcher = fetch_json,
 ) -> tuple[str, list[SourceDocument]]:
     user_id = parse_user_id(url)
     if not user_id:
         raise ValueError("没有找到用户 ID")
+    if isinstance(page_limit, bool) or not isinstance(page_limit, int) or page_limit <= 0:
+        raise ValueError(f"用户帖子分页上限无效：{page_limit}")
 
     base = origin(url)
     profile_url = f"{base}/api/v1/users/{user_id}"
     user = fetch_json_value(profile_url)
+    if not isinstance(user, dict):
+        raise ValueError("用户资料接口格式错误：应返回对象")
     name = clean_name(user.get("nickname") or f"user_{user_id}")
     documents = [
         make_source_document(
@@ -45,7 +50,7 @@ def crawl_user_documents(
 
     lt = None
     forum_sequence_index = 0
-    for page_index in range(5):
+    for page_index in range(page_limit):
         api_url = f"{base}/api/v1/users/{user_id}/forums"
         if lt:
             api_url += f"?lt={lt}"
@@ -53,6 +58,8 @@ def crawl_user_documents(
         if not isinstance(forums, list) or not forums:
             break
         for item_index, item in enumerate(forums):
+            if not isinstance(item, dict):
+                raise ValueError("用户帖子接口格式错误：列表项应为对象")
             parts = [
                 str(item.get("topic") or ""),
                 str(item.get("content") or ""),
@@ -87,6 +94,8 @@ def crawl_user_documents(
                     metadata={
                         "parseable": True,
                         "user_id": user_id,
+                        "identity_verified": True,
+                        "identity_source": profile_url,
                         "page_index": page_index,
                         "item_index": item_index,
                         "item_id": item_id,

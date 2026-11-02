@@ -21,29 +21,40 @@ def latest_issue_from_input(raw_issues: str, default_issues: str) -> str:
 def crawler_command_for_input(raw_issues: str) -> list[str]:
     cmd = [sys.executable, str(CRAWLER_FILE), "--workers", str(CRAWLER_WORKERS)]
     if raw_issues:
+        if len(crawler.parse_issues(raw_issues)) != 1:
+            raise ValueError("单期入口只允许一个期数；多期请使用多期入口")
         cmd.extend(["--issues", raw_issues])
-        if len(crawler.parse_issues(raw_issues)) > 1:
-            cmd.append("--no-cache-update")
     return cmd
+
+
+def cache_completion_message(crawl_issues: list[str], latest_issue: str) -> str:
+    if len(crawl_issues) > 1:
+        return f"{CACHE_FILE}：多期抓取不更新缓存。"
+    return f"{CACHE_FILE} 已由 crawler.py 同步：最新期 {latest_issue}，保留近10期。"
 
 
 def configure_output_encoding() -> None:
     for stream in (sys.stdout, sys.stderr):
         try:
-            stream.reconfigure(encoding="utf-8", errors="replace")
+            reconfigure = getattr(stream, "reconfigure", None)
+            if callable(reconfigure):
+                reconfigure(encoding="utf-8", errors="replace")
         except Exception:
             pass
 
 
 def main() -> int:
     configure_output_encoding()
-    print("请输入要爬取的期数，多个期数用逗号分隔，例如：124 或 123,124")
+    print("请输入要爬取的单一期数，例如：124；多期请使用多期入口。")
     print("直接回车则使用 crawler.py 默认期数。")
     issues = input("期数：").strip()
-    crawl_issues = crawler.parse_issues(issues or crawler.DEFAULT_ISSUES)
-    latest_issue = latest_issue_from_input(issues, crawler.DEFAULT_ISSUES)
-
-    cmd = crawler_command_for_input(issues)
+    try:
+        crawl_issues = crawler.parse_issues(issues or crawler.DEFAULT_ISSUES)
+        latest_issue = latest_issue_from_input(issues, crawler.DEFAULT_ISSUES)
+        cmd = crawler_command_for_input(issues)
+    except ValueError as exc:
+        print(str(exc))
+        return 2
 
     print()
     print("正在启动...")
@@ -64,7 +75,7 @@ def main() -> int:
         return 1
 
     print()
-    print(f"{CACHE_FILE} 已由 crawler.py 同步：最新期 {latest_issue}，保留近10期。")
+    print(cache_completion_message(crawl_issues, latest_issue))
 
     print()
     print("运行结束，请查看 N期-杀数字-成功.txt；如有失败，再查看 N期-杀数字-失败.txt")

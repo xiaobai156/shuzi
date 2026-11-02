@@ -12,7 +12,7 @@ from urllib.parse import urlparse
 from urllib.request import Request, urlopen
 
 
-REQUEST_RETRIES = 5
+REQUEST_RETRIES = 2
 HOST_MIN_INTERVAL = 0.7
 TRANSIENT_ERROR_MARKERS = (
     "WinError 10054",
@@ -106,11 +106,6 @@ def curl_fetch_bytes(url: str, timeout: int = 25) -> bytes:
         str(min(15, timeout)),
         "--max-time",
         str(timeout),
-        "--retry",
-        "2",
-        "--retry-delay",
-        "2",
-        "--retry-all-errors",
         "-A",
         HEADERS["User-Agent"],
         "-H",
@@ -131,7 +126,7 @@ def curl_fetch_bytes(url: str, timeout: int = 25) -> bytes:
 
 
 def fetch_bytes(url: str, timeout: int = 25) -> bytes:
-    last_error = None
+    last_error: Exception | None = None
     for attempt in range(REQUEST_RETRIES):
         try:
             wait_for_host_slot(url)
@@ -139,7 +134,7 @@ def fetch_bytes(url: str, timeout: int = 25) -> bytes:
             with urlopen(req, timeout=timeout, context=SSL_CONTEXT) as response:
                 return response.read()
         except HTTPError as exc:
-            if exc.code == 404:
+            if exc.code not in {408, 429, 500, 502, 503, 504}:
                 raise
             last_error = exc
             if attempt < REQUEST_RETRIES - 1:
@@ -156,30 +151,39 @@ def fetch_bytes(url: str, timeout: int = 25) -> bytes:
             return curl_fetch_bytes(url, timeout=timeout)
         except Exception as curl_exc:
             raise RuntimeError(f"{last_error}; curl 连接失败: {curl_exc}") from curl_exc
+    if last_error is None:
+        raise RuntimeError("请求失败但没有返回错误原因")
     raise last_error
 
 
-def decode_response(data: bytes) -> str:
+def decode_response(data: bytes, encoding: str | None = None) -> str:
     if not data:
         return ""
     if data.startswith(b"\x1f\x8b"):
         data = gzip.decompress(data)
+    if encoding:
+        return data.decode(encoding, errors="replace")
     head = data[:3000].decode("ascii", errors="ignore")
     meta = re.search(r"charset=[\"']?([A-Za-z0-9_-]+)", head, re.I)
-    encodings = []
+    encodings: list[str] = []
     if meta:
         encodings.append(meta.group(1))
     encodings += ["utf-8", "gb18030", "big5", "latin1"]
-    for encoding in encodings:
+    for candidate_encoding in encodings:
         try:
-            return data.decode(encoding)
+            return data.decode(candidate_encoding)
         except (UnicodeDecodeError, LookupError):
             continue
     return data.decode("utf-8", errors="ignore")
 
 
-def fetch_text(url: str, timeout: int = 25) -> str:
-    return decode_response(fetch_bytes(url, timeout=timeout))
+def fetch_text(
+    url: str,
+    timeout: int = 25,
+    *,
+    encoding: str | None = None,
+) -> str:
+    return decode_response(fetch_bytes(url, timeout=timeout), encoding=encoding)
 
 
 def fetch_json(url: str):

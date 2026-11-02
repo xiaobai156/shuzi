@@ -27,20 +27,6 @@ class RunStats:
     workers: int
 
 
-@dataclass
-class ManualRiskEntry:
-    name: str
-    url: str
-    reason: str
-    status: str
-    detail: str
-
-
-@dataclass(frozen=True)
-class CrawlRequest:
-    issues: tuple[str, ...]
-
-
 @dataclass(frozen=True)
 class SourceDocument:
     kind: str

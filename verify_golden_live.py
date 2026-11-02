@@ -61,6 +61,7 @@ def main() -> int:
         )
     finally:
         crawler.save_debug_page = original_save_debug
+        crawler.close_browser_pool()
 
     failed = False
     for name, actual, reason in checked:

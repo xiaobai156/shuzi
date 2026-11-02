@@ -2,6 +2,7 @@ import re
 
 from kill_numbers.parsing.common import (
     CANDIDATE_REGION_WINDOW,
+    ISSUE_MARKER_CLASS,
     extract_issue_numbers,
     filter_candidates_by_region,
     find_number_groups,
@@ -17,6 +18,7 @@ from kill_numbers.text_utils import (
     html_to_text,
     normalize_issue,
     normalize_keyword,
+    optional_issue,
     unique_keep_order,
 )
 
@@ -37,12 +39,14 @@ def diagnose_issue_mismatch(
     text = scope_text_by_anchor(text, anchor, stop_anchor)
     keyword_list = [normalize_keyword(keyword) for keyword in (keywords or []) if keyword]
     normalized_region = normalize_region(region)
+    window = issue_position_window or CANDIDATE_REGION_WINDOW
     allowed_window_starts = issue_position_window_starts(
         text,
         keywords,
         expected_count,
         region,
         issue_position_window,
+        allow_duplicate_numbers=allow_duplicate_numbers,
     )
 
     for issue in issues:
@@ -88,7 +92,7 @@ def diagnose_issue_mismatch(
         if valid_candidate_outside_window and not region_candidates:
             messages.append(
                 f"找到该期候选，但不在配置位置 {normalized_region or '未配置'} "
-                f"最新 {CANDIDATE_REGION_WINDOW} 条同栏目内"
+                f"最新 {window} 条同栏目内"
             )
         if region_candidates:
             strict_region = needs_strict_region_window(region_candidates)
@@ -96,16 +100,11 @@ def diagnose_issue_mismatch(
                 messages.append(
                     f"找到该期 {len(region_candidates)} 组候选，但配置缺少 top/bottom/顶部/尾部，已按严格规则拒绝"
                 )
-            selected = filter_candidates_by_region(
-                region_candidates,
-                normalized_region,
-                strict_window=strict_region,
-                require_region=strict_region,
-            )
+            selected = region_candidates if normalized_region or not strict_region else []
             if not selected:
                 preview = " | ".join(",".join(group) for group, _segment, _start in region_candidates[:5])
                 messages.append(
-                    f"找到该期符合数量的候选，但不在配置位置 {normalized_region or '未配置'} 最新 {CANDIDATE_REGION_WINDOW} 组内：{preview}"
+                    f"找到该期符合数量的候选，但不在配置位置 {normalized_region or '未配置'} 最新 {window} 组内：{preview}"
                 )
         if messages:
             diagnostics[issue] = "；".join(unique_keep_order(messages))
@@ -126,14 +125,16 @@ def detect_available_issues(
     text = html_to_text(text)
     text = scope_text_by_anchor(text, anchor, stop_anchor)
 
-    if issue_position_window:
+    if issue_position_window and normalize_region(region):
         allowed_window_starts = issue_position_window_starts(
             text,
             keywords,
             expected_count,
             region,
             issue_position_window,
+            allow_duplicate_numbers=allow_duplicate_numbers,
         )
+        assert allowed_window_starts is not None
         keyword_list = [normalize_keyword(keyword) for keyword in (keywords or []) if keyword]
         available = []
         for match in iter_all_issue_segment_matches(text):
@@ -149,12 +150,15 @@ def detect_available_issues(
                 and (allow_duplicate_numbers or not has_duplicate_numbers(group))
                 for group in groups
             ):
-                available.append(normalize_issue(match.group(1)))
+                candidate = optional_issue(match.group(1))
+                if candidate:
+                    available.append(candidate)
         return unique_keep_order(available)
 
     candidates = unique_keep_order(
-        normalize_issue(match.group(1))
-        for match in re.finditer(r"(?<!\d)0?(\d{1,3})\s*期", text)
+        candidate
+        for match in re.finditer(rf"(?<!\d)0?(\d{{1,3}})\s*{ISSUE_MARKER_CLASS}", text)
+        if (candidate := optional_issue(match.group(1)))
     )
     available = []
     for issue in candidates:

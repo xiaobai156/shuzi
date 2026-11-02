@@ -1,10 +1,14 @@
 import re
+import json
+import hashlib
 import subprocess
 import sys
+import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 
 import crawler
+from kill_numbers.infrastructure.cache_format import target_contract_fingerprint
 from kill_numbers.infrastructure.file_store import atomic_write_text
 from run_lock import exclusive_run_lock
 
@@ -20,37 +24,32 @@ class IssueRun:
     returncode: int
     success_file: Path
     failed_file: Path
+    current_successes: tuple[tuple[str, str, str], ...] | None = None
 
 
 def configure_output_encoding() -> None:
     for stream in (sys.stdout, sys.stderr):
         try:
-            stream.reconfigure(encoding="utf-8", errors="replace")
+            reconfigure = getattr(stream, "reconfigure", None)
+            if callable(reconfigure):
+                reconfigure(encoding="utf-8", errors="replace")
         except Exception:
             pass
-
-
-def success_names(result_file: Path) -> set[str]:
-    names = set()
-    if not result_file.exists():
-        return names
-    for line in result_file.read_text(encoding="utf-8", errors="replace").splitlines():
-        line = line.strip()
-        if not line:
-            continue
-        parts = line.split(maxsplit=1)
-        if len(parts) == 2:
-            names.add(parts[1].strip())
-    return names
 
 
 def failure_reasons(failed_file: Path) -> dict[str, str]:
     reasons = {}
     if not failed_file.exists():
         return reasons
-    pattern = re.compile(r"^\[[^\]]+\]\s+(.+?)\s+(https?://\S+)\s+(.*)$")
+    pattern = re.compile(
+        r"^(.+?)\s+(?:top|bottom|unknown)\s+(https?://\S+)\s+"
+        r"原因：\[[^\]]+\]\s*(.*)$"
+    )
+    legacy_pattern = re.compile(r"^\[[^\]]+\]\s+(.+?)\s+(https?://\S+)\s+(.*)$")
     for line in failed_file.read_text(encoding="utf-8", errors="replace").splitlines():
         match = pattern.match(line.strip())
+        if not match:
+            match = legacy_pattern.match(line.strip())
         if not match:
             continue
         name, _url, reason = match.groups()
@@ -67,13 +66,23 @@ def multi_report_file(issues: list[str]) -> Path:
 
 
 def write_multi_failure_report(runs: list[IssueRun], report_file: Path) -> list[str]:
-    active_names = [target.get("name") or target["url"] for target in crawler.load_targets()]
+    targets = crawler.load_targets()
+    active_names = [target.get("name") or target["url"] for target in targets]
+    identities = {
+        (target.get("name") or target["url"], target["url"], target_contract_fingerprint(target))
+        for target in targets
+    }
     passed_names: set[str] = set()
     reasons_by_issue: dict[str, dict[str, str]] = {}
 
     for run in runs:
-        passed_names.update(success_names(run.success_file))
-        reasons_by_issue[run.issue] = failure_reasons(run.failed_file)
+        if run.current_successes is not None:
+            passed_names.update(identity[0] for identity in run.current_successes if identity in identities)
+            reasons_by_issue[run.issue] = failure_reasons(run.failed_file)
+        else:
+            reasons_by_issue[run.issue] = {
+                name: "本轮未取得完成凭据，旧成功/失败文件不作为本轮依据" for name in active_names
+            }
 
     all_failed = [name for name in active_names if name not in passed_names]
     lines = [
@@ -103,6 +112,8 @@ def write_multi_failure_report(runs: list[IssueRun], report_file: Path) -> list[
 
 
 def run_issue(issue: str) -> IssueRun:
+    issue = crawler.normalize_issue(issue)
+    result_file, failed_file, _report_file = crawler.output_files_for_issues([issue])
     cmd = [
         sys.executable,
         str(CRAWLER_FILE),
@@ -114,13 +125,32 @@ def run_issue(issue: str) -> IssueRun:
     ]
     print()
     print(f"开始抓取 {issue}期")
-    result = subprocess.run(cmd, cwd=BASE_DIR)
-    result_file, failed_file, _report_file = crawler.output_files_for_issues([issue])
+    current_successes = None
+    with tempfile.TemporaryDirectory(prefix="kill-numbers-run-") as temporary:
+        receipt = Path(temporary) / "result.json"
+        result = subprocess.run([*cmd, "--run-result", str(receipt)], cwd=BASE_DIR)
+        try:
+            payload = json.loads(receipt.read_text(encoding="utf-8"))
+            records = payload["successes"]
+            if (result.returncode in {0, 1} and payload["issue"] == issue
+                    and payload['output_hashes'] == [
+                        hashlib.sha256(Path(path).read_bytes()).hexdigest() if Path(path).exists() else None
+                        for path in (result_file, failed_file)
+                    ]
+                    and isinstance(records, list)
+                    and all(isinstance(row, list) and len(row) == 3
+                            and all(isinstance(value, str) for value in row) for row in records)):
+                current_successes = tuple(tuple(row) for row in records)
+        except (OSError, ValueError, KeyError, TypeError):
+            pass
+    if current_successes is None:
+        print(f"{issue}期本轮完成凭据缺失或无效，不能使用旧成功文件判定成功。")
     return IssueRun(
         issue=issue,
-        returncode=result.returncode,
+        returncode=result.returncode if current_successes is not None else 2,
         success_file=Path(result_file),
         failed_file=Path(failed_file),
+        current_successes=current_successes,
     )
 
 
@@ -153,7 +183,7 @@ def main() -> int:
     try:
         with exclusive_run_lock(BASE_DIR / ".crawler-multi.lock"):
             return _main_unlocked()
-    except RuntimeError as exc:
+    except (RuntimeError, ValueError, OSError, EOFError) as exc:
         print(str(exc))
         return 2
 

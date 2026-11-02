@@ -24,7 +24,7 @@ def test_windowed_available_issues_scans_the_top_window_once(monkeypatch):
         anchor="条纹妇人",
         region="top",
         issue_position_window=4,
-    ) == ["210", "209", "208"]
+    ) == ["210", "209", "208", "207"]
 
 
 def test_top_window_does_not_accept_an_old_issue():
@@ -64,7 +64,7 @@ def test_top_window_conflict_still_fails_closed():
         )
 
 
-def test_direction_window_is_always_top_three_or_bottom_three():
+def test_explicit_direction_window_controls_top_and_bottom_selection():
     text = "条纹妇人\n" + "\n".join(issue_row(issue) for issue in range(210, 204, -1))
 
     assert crawler.extract_issue_numbers(
@@ -75,7 +75,7 @@ def test_direction_window_is_always_top_three_or_bottom_three():
         anchor="条纹妇人",
         region="top",
         issue_position_window=30,
-    ) == {}
+    ) == {"207": ["01", "02", "03", "04", "05", "06", "07", "08", "09", "10"]}
     assert crawler.extract_issue_numbers(
         text,
         ["208"],
@@ -84,7 +84,7 @@ def test_direction_window_is_always_top_three_or_bottom_three():
         anchor="条纹妇人",
         region="bottom",
         issue_position_window=30,
-    ) == {}
+    ) == {"208": ["01", "02", "03", "04", "05", "06", "07", "08", "09", "10"]}
 
 
 def test_top_user_page_extracts_once_after_a_forum_page(monkeypatch):
@@ -123,3 +123,35 @@ def test_top_user_page_extracts_once_after_a_forum_page(monkeypatch):
     assert name == "条纹妇人"
     assert len(calls) == 1
     assert content == "first\none"
+
+
+def test_user_profile_api_rejects_non_object_payload():
+    with pytest.raises(ValueError, match="用户资料接口格式错误"):
+        crawler.crawl_user_documents(
+            "https://example.test/#/users/123",
+            fetch_json_value=lambda _url: [],
+        )
+
+
+def test_user_document_page_limit_stops_after_configured_first_page():
+    calls = []
+
+    def fake_fetch_json(url: str):
+        calls.append(url)
+        if url.endswith("/api/v1/users/123"):
+            return {"nickname": "条纹妇人"}
+        if url.endswith("/api/v1/users/123/forums"):
+            return [{"id": "3", "topic": "first", "content": "one"}]
+        raise AssertionError(f"不应抓取下一页：{url}")
+
+    _name, documents = crawler.crawl_user_documents(
+        "https://example.test/#/users/123",
+        page_limit=1,
+        fetch_json_value=fake_fetch_json,
+    )
+
+    assert len(documents) == 2
+    assert calls == [
+        "https://example.test/api/v1/users/123",
+        "https://example.test/api/v1/users/123/forums",
+    ]

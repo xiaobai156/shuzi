@@ -1,4 +1,5 @@
 import re
+import hashlib
 from collections.abc import Iterable, Mapping
 
 from kill_numbers.domain.models import (
@@ -11,10 +12,13 @@ from kill_numbers.parsing.common import (
     find_number_groups,
     has_duplicate_numbers,
     issue_segment_matches,
+    number_groups_for_count,
     scope_text_by_anchor_with_offset,
     valid_number,
 )
-from kill_numbers.parsing.dedicated.site_parsers import normalize_identity_article_current_placeholder
+from kill_numbers.parsing.dedicated.site_parsers import normalize_identity_article_current_placeholder, dedicated_candidate_location
+from kill_numbers.parsing.registry import parse_target_content, target_for_document
+from kill_numbers.parsing.dom_scope import content_section
 from kill_numbers.text_utils import as_list, html_to_text, normalize_issue, unique_keep_order
 
 
@@ -24,9 +28,12 @@ def _candidate_location(
     numbers: list[str],
     document: SourceDocument,
 ) -> tuple[str, int, int, int]:
+    dedicated = dedicated_candidate_location(document.content, dict(target), issue, numbers)
+    if dedicated is not None:
+        return dedicated
     text = html_to_text(document.content)
     if target.get("special_parser") == "identity_article_bottom_10":
-        text = normalize_identity_article_current_placeholder(text, target)
+        text = normalize_identity_article_current_placeholder(text, dict(target))
 
     anchors = [
         str(value).strip()
@@ -35,15 +42,21 @@ def _candidate_location(
             *as_list(target.get("source_anchor")),
             target.get("article_identity"),
         )
-        if str(value).strip()
+        if value is not None and str(value).strip()
     ]
     region = str(target.get("region") or "").lower()
 
     def evidence_groups(segment: str) -> list[list[str]]:
+        expected_count = target.get("count")
+        if isinstance(expected_count, int) and expected_count > 0:
+            # 与解析层同一套切分口径（含粘连 4 位、漏印前导 0 的容错），
+            # 否则解析层认了、证据层认不出，会报“缺少同块栏目/偏移证据”。
+            tolerant = number_groups_for_count(segment, expected_count)
+            if tolerant:
+                return tolerant
         groups = find_number_groups(segment)
         if groups:
             return groups
-        expected_count = target.get("count")
         if not isinstance(expected_count, int) or expected_count <= 0:
             return []
         pattern = re.compile(
@@ -54,18 +67,22 @@ def _candidate_location(
             for match in pattern.finditer(segment)
         ]
 
-    for anchor in (*unique_keep_order(anchors), ""):
+    for anchor in (unique_keep_order(anchors) or [""]):
         try:
-            section, section_start = scope_text_by_anchor_with_offset(
-                text,
-                anchor,
-                target.get("stop_anchor"),
-            )
+            if target.get('content_class'):
+                section, section_start = content_section(document.content, {**target, 'anchor': anchor})
+            else:
+                section, section_start = scope_text_by_anchor_with_offset(
+                    text, anchor, target.get("stop_anchor"),
+                )
         except ValueError:
             continue
 
         locations = []
         for match in issue_segment_matches(section, issue):
+            allowed = document.metadata.get('allowed_row_starts')
+            if allowed is not None and section_start + match.start() not in allowed:
+                continue
             for group in evidence_groups(match.group(0)):
                 normalized = [f"{int(number):02d}" for number in group]
                 if normalized == numbers:
@@ -113,6 +130,9 @@ def _validate_source_document(
         errors.append("来源文档证据不完整")
     if not document.metadata.get("parseable", True):
         errors.append("来源文档不可解析")
+    authorization = document.metadata.get('authorization')
+    if authorization and authorization not in (target.get('allowed_source_types') or []):
+        errors.append('来源文档未获配置授权')
     source_pattern = str(target.get("source_url_pattern") or "").strip()
     if source_pattern and not re.search(source_pattern, document.url, re.I):
         errors.append("来源文档不符合专属 URL 契约")
@@ -132,8 +152,23 @@ def evidence_from_source_document(
         raise ValueError("；".join(errors))
     if not document.content.strip() or not document.fingerprint:
         raise ValueError(f"{normalized_issue}期来源文档证据不完整")
+    if document.fingerprint != hashlib.sha256(document.content.encode('utf-8', errors='replace')).hexdigest():
+        raise ValueError("来源文档内容与指纹不匹配")
+    source_errors = _validate_source_document(target, document)
+    if source_errors:
+        raise ValueError('；'.join(source_errors))
+    scoped_target = target_for_document(dict(target), document)
+    # Linked acquisitions have already selected the article; replay its body parser.
+    linked_parser = scoped_target.get('special_parser')
+    if linked_parser == 'zuojianzifu_link_chain':
+        scoped_target['special_parser'] = ''
+    elif linked_parser == 'ttss_paginated_identity_top_10':
+        scoped_target['special_parser'] = 'identity_article_top_10'
+    replayed = parse_target_content(document.content, scoped_target, [normalized_issue])
+    if replayed.get(normalized_issue) != normalized_numbers:
+        raise ValueError(f'{normalized_issue}期候选不符合来源栏目、字段或方向窗口')
     anchor, section_start, section_end, candidate_start = _candidate_location(
-        target,
+        scoped_target,
         normalized_issue,
         normalized_numbers,
         document,
@@ -302,7 +337,7 @@ def validate_crawl_results(
                     result.evidence
                     for result in results
                     if normalize_issue(result.issue) == issue
-                    and list(result.numbers) == numbers
+                    and _normalize_numbers(result.numbers, issue=issue)[0] == numbers
                 ),
                 None,
             ),

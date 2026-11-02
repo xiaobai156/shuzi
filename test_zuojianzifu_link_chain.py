@@ -15,7 +15,7 @@ TARGET = {
 
 
 def source_document(url: str, content: str, *, page_region: str = ""):
-    metadata = {"parseable": True}
+    metadata: dict[str, bool | str] = {"parseable": True}
     if page_region:
         metadata["page_region"] = page_region
     return make_source_document(
@@ -63,3 +63,18 @@ def test_link_chain_preserves_selected_article_document_for_validation(monkeypat
     assert results[0].evidence is not None
     assert results[0].evidence.source_url == article_url
     assert results[0].evidence.document_fingerprint == documents[article_url][0].fingerprint
+
+
+def test_link_chain_discovers_listing_issues_without_opening_articles(monkeypatch):
+    listing = source_document(
+        TARGET["url"],
+        '<a href="/211.html">211期：【作茧自缚】☆杀特十码☆</a>'
+        '<a href="/210.html">210期：【作茧自缚】☆杀特十码☆</a>',
+    )
+    monkeypatch.setattr(
+        crawler,
+        "discover_static_documents",
+        lambda url: ("测试页面", [listing]) if url == TARGET["url"] else (_ for _ in ()).throw(AssertionError(url)),
+    )
+
+    assert crawler.discover_acquisition_only_available_issues(TARGET) == ["211", "210"]

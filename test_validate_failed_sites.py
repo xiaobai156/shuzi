@@ -28,6 +28,22 @@ def load_top_target() -> dict:
     return target
 
 
+def load_current_cycle_only_content() -> str:
+    return """频果报论坛准杀八码 237期
+不可或缺 发表于 08月25日 09:49:10
+235期：【准杀八码】22.21.25.35.10.33.02.17开猪32准
+236期：【准杀八码】17.26.31.46.11.24.23.48开猴11错
+237期：【准杀八码】21.03.09.31.49.19.10.15开0000准
+上一篇：
+"""
+
+
+def load_bottom_target() -> dict:
+    return copy.deepcopy(
+        next(target for target in crawler.load_targets() if target.get("name") == "不可或缺")
+    )
+
+
 def test_explicit_validation_names_do_not_expand_to_historical_failure_list():
     assert validator.validation_names(["作茧自缚"]) == ["作茧自缚"]
 
@@ -38,6 +54,56 @@ def test_current_cycle_wins_when_issue_repeats_in_legacy_cycle():
     )
 
     assert found == {"208": ["12", "04", "42", "10", "36", "11", "43", "20"]}
+
+
+def test_isolated_parser_accepts_current_cycle_without_legacy_seam():
+    found = validator.extract_buke_article_history_numbers(
+        load_current_cycle_only_content(), ["235", "236", "237"], load_bottom_target()
+    )
+
+    assert found == {
+        "235": ["22", "21", "25", "35", "10", "33", "02", "17"],
+        "236": ["17", "26", "31", "46", "11", "24", "23", "48"],
+        "237": ["21", "03", "09", "31", "49", "19", "10", "15"],
+    }
+
+
+def test_formal_parser_accepts_current_cycle_without_legacy_seam():
+    assert crawler.extract_top_article_history_current_cycle_numbers(
+        load_current_cycle_only_content(), ["235", "236", "237"], load_bottom_target()
+    ) == {
+        "235": ["22", "21", "25", "35", "10", "33", "02", "17"],
+        "236": ["17", "26", "31", "46", "11", "24", "23", "48"],
+        "237": ["21", "03", "09", "31", "49", "19", "10", "15"],
+    }
+
+
+def test_isolated_parser_does_not_invent_missing_current_cycle_issue():
+    assert validator.extract_buke_article_history_numbers(
+        load_current_cycle_only_content(), ["238"], load_bottom_target()
+    ) == {}
+
+
+def test_isolated_parser_rejects_title_issue_outside_current_rows():
+    content = load_current_cycle_only_content().replace("237期\n", "238期\n", 1)
+
+    with pytest.raises(ValueError, match="当前文章标题期数 238 不在底部当前周期窗口内"):
+        validator.extract_buke_article_history_numbers(
+            content, ["237"], load_bottom_target()
+        )
+
+
+def test_isolated_parser_rejects_conflicting_current_cycle_rows():
+    content = load_current_cycle_only_content().replace(
+        "237期：【准杀八码】",
+        "237期：【准杀八码】01.02.03.04.05.06.07.08开0000准\n"
+        "237期：【准杀八码】",
+    )
+
+    with pytest.raises(ValueError, match="237期 候选不唯一"):
+        validator.extract_buke_article_history_numbers(
+            content, ["237"], load_bottom_target()
+        )
 
 
 def test_top_cycle_handles_title_issue_after_first_body_row():
@@ -55,7 +121,6 @@ def test_formal_parser_matches_isolated_parser_for_cycle_fixture():
     assert crawler.extract_top_article_history_current_cycle_numbers(
         content, ["207", "208", "209"], target
     ) == {
-        "207": ["26", "11", "35", "14", "32", "37", "06", "46"],
         "208": ["12", "04", "42", "10", "36", "11", "43", "20"],
         "209": ["06", "19", "08", "05", "36", "38", "25", "16"],
     }
@@ -69,12 +134,26 @@ def test_formal_parser_missing_issue_is_not_invented():
     assert found == {}
 
 
+def test_formal_parser_rejects_multiple_cycle_boundaries():
+    content = load_fixture_content().replace(
+        "上一篇:",
+        "365期:[准杀八码]11.12.13.14.15.16.17.18开鼠42准\n"
+        "001期:[准杀八码]21.22.23.24.25.26.27.28开鼠42准\n"
+        "上一篇:",
+    )
+
+    with pytest.raises(ValueError, match="周期文档边界数量异常：2"):
+        crawler.extract_top_article_history_current_cycle_numbers(
+            content, ["209"], load_top_target()
+        )
+
+
 def test_neighbor_issues_stay_in_their_actual_cycle():
     found = validator.extract_buke_article_history_numbers(
         load_fixture_content(), ["207", "209"], load_top_target()
     )
 
-    assert found["207"] == ["26", "11", "35", "14", "32", "37", "06", "46"]
+    assert "207" not in found  # Only present in the legacy cycle.
     assert found["209"] == ["06", "19", "08", "05", "36", "38", "25", "16"]
 
 

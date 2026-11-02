@@ -37,7 +37,8 @@
     ],
     "count": 6,
     "region": "top",
-    "anchor": "拔树寻根"
+    "anchor": "拔树寻根",
+    "user_page_limit": 1
   },
   {
     "url": "https://wcvwpj.mb4i3-vwk1b-cadppa.work/#/users/3902",
@@ -47,7 +48,8 @@
     ],
     "count": 6,
     "region": "top",
-    "anchor": "优秀棒球"
+    "anchor": "优秀棒球",
+    "user_page_limit": 1
   },
   {
     "url": "https://wcvwpj.mb4i3-vwk1b-cadppa.work/#/users/3719",
@@ -57,7 +59,8 @@
     ],
     "count": 6,
     "region": "top",
-    "anchor": "破旧糖"
+    "anchor": "破旧糖",
+    "user_page_limit": 1
   },
   {
     "url": "https://wcvwpj.mb4i3-vwk1b-cadppa.work/#/users/22390",
@@ -69,7 +72,8 @@
     "position": "first",
     "region": "top",
     "anchor": "条纹妇人",
-    "issue_position_window": 4
+    "issue_position_window": 4,
+    "user_page_limit": 1
   },
   {
     "url": "https://qwpapph.el7s4-pbxnj-aemcbt.work:16677/topic/559001.html",
@@ -126,6 +130,9 @@
   {
     "url": "https://pyjgoe.burj6-ovh80-gurlas.xyz:16677/topic/697242.html",
     "name": "用兵如神杀十码",
+    "allowed_source_types": [
+      "decoded_script"
+    ],
     "keywords": [
       "绝杀10码"
     ],
@@ -157,8 +164,11 @@
     "disabled": true
   },
   {
-    "url": "https://jjlachsn.4fk3e-i2rpf-vgknlh.work:16677/topic/649643.html",
+    "url": "https://efonbmne.eu612-mw400-kssyci.cyou:17455/topic/649643.html",
     "name": "智能杀十码",
+    "allowed_source_types": [
+      "decoded_script"
+    ],
     "keywords": [
       "杀10码"
     ],
@@ -198,7 +208,8 @@
     ],
     "count": 10,
     "region": "top",
-    "anchor": "创新晚餐"
+    "anchor": "创新晚餐",
+    "user_page_limit": 1
   },
   {
     "url": "https://wprfimqt.7j03g-gmdp7-erxmww.xyz:16633/topic/464260.html",
@@ -213,6 +224,9 @@
   {
     "url": "https://269x6s.k4x2w-1o62c-peefnm.work/topic/485548.html",
     "name": "切肤之痛杀七码",
+    "allowed_source_types": [
+      "decoded_script"
+    ],
     "keywords": [
       "绝杀7码"
     ],
@@ -254,6 +268,9 @@
   {
     "url": "https://0cggq.b8qlh-53itf-ysakgs.work/topic/207227.html",
     "name": "天无二日杀七码",
+    "allowed_source_types": [
+      "decoded_script"
+    ],
     "keywords": [
       "绝杀7码"
     ],
@@ -275,6 +292,9 @@
   {
     "url": "https://gboqrz.40cfw-lkghj-ztwlfr.work/topic/206542.html",
     "name": "是耶非耶杀六码",
+    "allowed_source_types": [
+      "decoded_script"
+    ],
     "keywords": [
       "杀六码"
     ],
@@ -320,6 +340,9 @@
   {
     "url": "https://gboqrz.40cfw-lkghj-ztwlfr.work/topic/453925.html",
     "name": "四面八方杀七码",
+    "allowed_source_types": [
+      "decoded_script"
+    ],
     "keywords": [
       "精杀七码"
     ],
@@ -363,6 +386,9 @@
   {
     "url": "https://eqdfqyah.jigmo-9e498-sxucok.xyz:16677/topic/216630.html",
     "name": "极目迥望杀十码",
+    "allowed_source_types": [
+      "decoded_script"
+    ],
     "keywords": [
       "杀10码"
     ],
@@ -372,8 +398,11 @@
     "issue_position_window": 5
   },
   {
-    "url": "https://tulprhfc.wghcb-bnmgm-hyymaz.work:16655/topic/324700.html",
+    "url": "https://owvanaxi.2151m-ot1k5-vsfxmm.work:17477/topic/324700.html",
     "name": "平特网心水杀十码",
+    "allowed_source_types": [
+      "decoded_script"
+    ],
     "keywords": [
       "杀10码"
     ],
@@ -420,18 +449,6 @@
     "disabled": true
   },
   {
-    "url": "https://2nnjrfosod.dh4884889.xyz/bbs/topic.php?id=2322",
-    "name": "自由自在",
-    "keywords": [
-      "自由自在"
-    ],
-    "count": 10,
-    "region": "bottom",
-    "disabled": true,
-    "anchor": "作者:自由自在",
-    "stop_anchor": "下一贴:"
-  },
-  {
     "url": "https://u6agr.jjv6c-j94cd-awnkgc.xyz/topic/235458.html",
     "name": "见景生情杀五码",
     "keywords": [
@@ -468,6 +485,9 @@
   {
     "url": "https://fptnapl.o7l2d-gr6ew-tvgvep.xyz:16677/topic/349643.html",
     "name": "如梦如幻杀七码",
+    "allowed_source_types": [
+      "decoded_script"
+    ],
     "keywords": [
       "绝杀七码"
     ],
@@ -481,6 +501,9 @@
   {
     "url": "https://scbnsyz.3dl0e-87g6y-coruzs.xyz:16677/topic/273105.html",
     "name": "金牌谜语杀十码",
+    "allowed_source_types": [
+      "decoded_script"
+    ],
     "keywords": [
       "杀十码中"
     ],
@@ -492,6 +515,9 @@
   {
     "url": "https://kjkkzzg.eiu7u-3edk2-gjzmrl.xyz:16677/topic/446854.html",
     "name": "来去匆匆",
+    "allowed_source_types": [
+      "decoded_script"
+    ],
     "keywords": [
       "稳杀五码"
     ],
@@ -504,6 +530,9 @@
   {
     "url": "https://kjkkzzg.eiu7u-3edk2-gjzmrl.xyz:16677/topic/447275.html",
     "name": "门潭赠庆杀十码",
+    "allowed_source_types": [
+      "decoded_script"
+    ],
     "keywords": [
       "稳杀⑩码"
     ],
@@ -516,6 +545,9 @@
   {
     "url": "https://kulipur.l5paz-a0o8v-uozmmd.xyz:16677/topic/435514.html",
     "name": "不可或缺",
+    "allowed_source_types": [
+      "decoded_script"
+    ],
     "keywords": [
       "准杀八码"
     ],
@@ -548,8 +580,11 @@
     "disabled": true
   },
   {
-    "url": "https://pvxiftuf.yumkw-u4s81-hpytyz.work:16677/topic/559107.html",
+    "url": "https://owvanaxi.2151m-ot1k5-vsfxmm.work:17477/topic/559107.html",
     "name": "悼心失图",
+    "allowed_source_types": [
+      "decoded_script"
+    ],
     "keywords": [
       "稳杀7码"
     ],
@@ -582,13 +617,16 @@
   {
     "url": "https://t59nd.prm9k-tor19-vowopt.xyz/topic/206668.html",
     "name": "无庸赘述",
+    "content_class": "topic-content",
+    "allowed_source_types": [
+      "decoded_script"
+    ],
     "keywords": [
       "杀8码"
     ],
     "count": 8,
     "region": "bottom",
     "anchor": "作者:无庸赘述",
-    "stop_anchor": "document.writeln",
     "issue_position_window": 5
   },
   {
@@ -614,6 +652,9 @@
   {
     "url": "https://dtnjpph.1p0w8-q5dks-oxbahg.xyz:16677/",
     "name": "芳草地",
+    "allowed_source_types": [
+      "decoded_script"
+    ],
     "keywords": [
       "绝杀十码"
     ],
@@ -636,13 +677,16 @@
   {
     "url": "https://avfzesda.v3g7d-e00td-idgbab.xyz:16677/topic/472398.html",
     "name": "天公作美",
+    "content_class": "content",
+    "allowed_source_types": [
+      "decoded_script"
+    ],
     "keywords": [
       "绝杀10码"
     ],
     "count": 10,
     "region": "top",
     "anchor": "天公作美 发表于",
-    "stop_anchor": "上一篇：",
     "issue_position_window": 5
   },
   {
@@ -659,6 +703,9 @@
   {
     "url": "https://qdufkx.sjb5z-pi4k6-jlhnig.xyz:16677/topic/798107.html",
     "name": "无法无天",
+    "allowed_source_types": [
+      "decoded_script"
+    ],
     "keywords": [
       "稳杀⑩码"
     ],
@@ -695,6 +742,9 @@
   {
     "url": "https://vmfvzmh.7jh1y-qgjk8-lavfxb.work:16677/topic/782080.html",
     "name": "刻舟求剑",
+    "allowed_source_types": [
+      "decoded_script"
+    ],
     "keywords": [
       "六码",
       "6码"
@@ -707,6 +757,9 @@
   {
     "url": "https://vmfvzmh.7jh1y-qgjk8-lavfxb.work:16677/topic/468202.html",
     "name": "舞榭歌楼",
+    "allowed_source_types": [
+      "decoded_script"
+    ],
     "keywords": [
       "绝杀10码",
       "绝杀十码"
@@ -719,19 +772,6 @@
     "issue_position_window": 5
   },
   {
-    "url": "https://mhpayza.30mg9-m9j7l-obwrmb.xyz/",
-    "name": "湖心小筑",
-    "keywords": [
-      "绝杀10码",
-      "绝杀十码"
-    ],
-    "count": 10,
-    "region": "top",
-    "anchor": "湖心小筑",
-    "special_parser": "huxin_xiaozhu_stable_10",
-    "issue_position_window": 5
-  },
-  {
     "url": "https://eolantz.v6nli-9yz71-rihyny.xyz:16677/topic/447943.html",
     "name": "朝章国典",
     "keywords": [
@@ -741,43 +781,6 @@
     "count": 5,
     "region": "top",
     "disabled": true
-  },
-  {
-    "url": "https://tetinte.nzxzd-cfket-xtgznp.xyz:16677/topic/592477.html",
-    "name": "六合绝杀十码",
-    "keywords": [
-      "绝杀10码",
-      "绝杀十码"
-    ],
-    "count": 10,
-    "region": "bottom",
-    "anchor": "六合公式-唯一官网",
-    "issue_position_window": 5,
-    "special_parser": "liuhe_bottom_10"
-  },
-  {
-    "url": "https://tetinte.nzxzd-cfket-xtgznp.xyz:16677/topic/592476.html",
-    "name": "六合稳杀十码",
-    "keywords": [
-      "稳杀十码"
-    ],
-    "count": 10,
-    "region": "bottom",
-    "anchor": "稳杀十码",
-    "stop_anchor": "document.writeln",
-    "issue_position_window": 5
-  },
-  {
-    "url": "https://tetinte.nzxzd-cfket-xtgznp.xyz:16677/topic/592474.html",
-    "name": "六合稳杀七码",
-    "keywords": [
-      "精杀7.码"
-    ],
-    "count": 7,
-    "region": "bottom",
-    "anchor": "精杀7.码",
-    "stop_anchor": "document.writeln",
-    "issue_position_window": 5
   },
   {
     "url": "https://tetinte.nzxzd-cfket-xtgznp.xyz:16677/topic/592475.html",
@@ -817,6 +820,10 @@
   {
     "url": "https://lkjguap.krocy-ah6dv-kgkpjm.xyz:16677/topic/287350.html",
     "name": "一点朱砂",
+    "content_class": "content",
+    "allowed_source_types": [
+      "decoded_script"
+    ],
     "keywords": [
       "绝杀10码",
       "绝杀十码"
@@ -824,12 +831,14 @@
     "count": 10,
     "region": "top",
     "anchor": "一点朱砂 发表于",
-    "stop_anchor": "上一篇：",
     "issue_position_window": 5
   },
   {
     "url": "https://movrpsf.c2q2k-ln8mj-phrazq.xyz:16677/",
     "name": "凤舞九天",
+    "allowed_source_types": [
+      "decoded_script"
+    ],
     "keywords": [
       "绝杀10码",
       "绝杀十码"
@@ -844,6 +853,9 @@
   {
     "url": "https://cnczerw.dgl7k-xancr-nbsvho.xyz:16677/topic/247328.html",
     "name": "风吹草动",
+    "allowed_source_types": [
+      "decoded_script"
+    ],
     "keywords": [
       "经典绝杀10码",
       "绝杀10码"
@@ -855,6 +867,9 @@
   {
     "url": "https://cnczerw.dgl7k-xancr-nbsvho.xyz:16677/topic/247341.html",
     "name": "天下长明",
+    "allowed_source_types": [
+      "decoded_script"
+    ],
     "keywords": [
       "绝杀10码",
       "绝杀十码"
@@ -879,6 +894,9 @@
   {
     "url": "https://uhcmdez.qa2o9-cy1mb-vbyzwm.xyz:16677/topic/678031.html",
     "name": "花开四季",
+    "allowed_source_types": [
+      "decoded_script"
+    ],
     "keywords": [
       "绝杀10码",
       "绝杀十码"
@@ -886,7 +904,9 @@
     "count": 10,
     "region": "top",
     "issue_position_window": 3,
-    "anchor": "花开四季"
+    "anchor": "花开四季",
+    "disabled": true,
+    "archive_tag": "用户指定封存"
   },
   {
     "url": "https://uhcmdez.qa2o9-cy1mb-vbyzwm.xyz:16677/topic/626083.html",
@@ -914,6 +934,9 @@
   {
     "url": "https://culqbyo.ux5p0-lurzs-cbuucd.work:16677/topic/510816.html",
     "name": "白虎玄机",
+    "allowed_source_types": [
+      "decoded_script"
+    ],
     "keywords": [
       "绝杀10码",
       "绝杀十码"
@@ -939,6 +962,9 @@
   {
     "url": "https://vwsizof.wohgn-jqumj-ypmveu.xyz:16677/topic/580128.html",
     "name": "当家做主",
+    "allowed_source_types": [
+      "decoded_script"
+    ],
     "keywords": [
       "绝杀10码",
       "绝杀十码"
@@ -950,8 +976,11 @@
     "issue_position_window": 5
   },
   {
-    "url": "https://faxemto.nwcah-udoen-iwkoqi.xyz:16677/",
+    "url": "https://usdypgbu.axqo7-cr6eq-voslpw.work:17455/",
     "name": "澳门神童",
+    "allowed_source_types": [
+      "decoded_script"
+    ],
     "keywords": [
       "精杀10码",
       "精杀十码"
@@ -979,6 +1008,9 @@
   {
     "url": "https://hpktfgx.p4pj0-e5ads-inqsvz.xyz:16677/topic/465488.html",
     "name": "文武双全",
+    "allowed_source_types": [
+      "decoded_script"
+    ],
     "keywords": [
       "绝杀八码",
       "八码"
@@ -992,6 +1024,9 @@
   {
     "url": "https://knhlnvo.zvdsi-8qf2t-wchuxk.xyz:16677/topic/437731.html",
     "name": "精疲力尽",
+    "allowed_source_types": [
+      "decoded_script"
+    ],
     "keywords": [
       "绝杀七码",
       "七码"
@@ -1016,6 +1051,9 @@
   {
     "url": "https://yaaxgud.xg0eu-qjubd-yneksw.xyz:16677/",
     "name": "广西三八",
+    "allowed_source_types": [
+      "decoded_script"
+    ],
     "keywords": [
       "⑩码"
     ],
@@ -1029,6 +1067,9 @@
   {
     "url": "https://lnihqm.sutfb-9m5n3-mezozb.work:16677/#am",
     "name": "绝杀帝",
+    "allowed_source_types": [
+      "decoded_script"
+    ],
     "keywords": [
       "绝杀10码",
       "绝杀十码"
@@ -1053,6 +1094,9 @@
   {
     "url": "https://estsghu.t7gsm-xl1x8-uohlna.xyz:16677/topic/356085.html",
     "name": "宽大为怀",
+    "allowed_source_types": [
+      "decoded_script"
+    ],
     "keywords": [
       "绝杀八码",
       "八码"
@@ -1066,6 +1110,9 @@
   {
     "url": "https://estsghu.t7gsm-xl1x8-uohlna.xyz:16677/topic/349560.html",
     "name": "接二连三",
+    "allowed_source_types": [
+      "decoded_script"
+    ],
     "keywords": [
       "绝杀10码",
       "绝杀十码"
@@ -1099,7 +1146,9 @@
     ],
     "count": 10,
     "region": "bottom",
-    "anchor": "至富财运"
+    "anchor": "至富财运",
+    "disabled": true,
+    "archive_tag": "用户指定封存"
   },
   {
     "url": "https://rwraojf.l54vq-9httr-cmdnip.work:29477/article/admin/6a0414f04ea5c20141013dab?url=xdr",
@@ -1117,6 +1166,9 @@
   {
     "url": "https://yqjfwqsc.1dayz-aetgp-kbjidr.xyz:16677/topic/682039.html",
     "name": "和风汉韵",
+    "allowed_source_types": [
+      "decoded_script"
+    ],
     "keywords": [
       "绝杀10码",
       "绝杀十码"
@@ -1200,16 +1252,19 @@
     "special_parser": "identity_article_bottom_10"
   },
   {
-    "url": "https://zlkcyl.e6mlx-wj46o-rzcukg.work:29499/article/admin/6a0814c8e0d076537e1df7bd?url=hyl",
-    "name": "赢家为王",
+    "url": "https://zlkcyl.e6mlx-wj46o-rzcukg.work:29499/article/manager/6a0814c8e0d076537e1df7bd?url=hyl",
+    "api_url": "https://zlkcyl.e6mlx-wj46o-rzcukg.work:29499/api/proxy/manager-articles/6a0814c8e0d076537e1df7bd",
+    "name": "赢者为王",
     "keywords": [
       "绝杀十码",
       "绝杀10码"
     ],
     "count": 10,
     "region": "bottom",
-    "disabled": true,
-    "anchor": "赢者为王"
+    "anchor": "赢者为王",
+    "article_identity": "赢者为王",
+    "issue_position_window": 10,
+    "special_parser": "identity_article_bottom_10"
   },
   {
     "url": "https://zlkcyl.e6mlx-wj46o-rzcukg.work:29499/article/admin/6a0816b6e0d076537e1df81f?url=hyl",
@@ -1274,7 +1329,11 @@
     "url": "https://sheuzjss.tgpcj-9w0vl-mwyhly.work:29422/article/manager/6a04569d4ea5c20141013eac?url=zfw",
     "api_url": "https://sheuzjss.tgpcj-9w0vl-mwyhly.work:29422/api/proxy/manager-articles/6a04569d4ea5c20141013eac",
     "name": "冰雨蝴蝶",
-    "keywords": ["绝杀十码"],
+    "disabled": true,
+    "archive_tag": "用户指定封存",
+    "keywords": [
+      "绝杀十码"
+    ],
     "count": 10,
     "region": "bottom",
     "anchor": "冰玉蝴蝶",
@@ -1296,13 +1355,16 @@
   {
     "url": "https://akqasqa.drr11-soh5x-jcaafg.xyz:16677/",
     "name": "雨锁蓝心",
+    "allowed_source_types": [
+      "decoded_script"
+    ],
     "keywords": [
       "杀"
     ],
     "count": 10,
     "region": "bottom",
-    "anchor": "雨锁蓝心（绝特10码）",
-    "stop_anchor": "珠联璧合（三肖四码）",
+    "anchor": "雨锁蓝心(绝特10码)",
+    "stop_anchor": "珠联璧合(三肖四码)",
     "issue_position_window": 3
   },
   {
@@ -1322,7 +1384,9 @@
     "name": "福星金牌",
     "count": 10,
     "region": "bottom",
-    "anchor": "福星金牌"
+    "anchor": "福星金牌",
+    "disabled": true,
+    "archive_tag": "用户指定封存"
   },
   {
     "url": "https://pgyzulb.iwnn7-gyyip-pnpfqv.work:29477/article/admin/6a153f44d9d9fc2cea5241a3?url=bflc",
@@ -1340,6 +1404,8 @@
   },
   {
     "url": "https://uqdccnri.oy2bh-swrfr-gvzxkk.work:29499/article/admin/6a0322b356a1d26b7774455e?url=lcz",
+    "disabled": true,
+    "archive_tag": "用户指定封存",
     "name": "金宝神皇",
     "count": 10,
     "region": "bottom",
@@ -1370,25 +1436,89 @@
     "name": "博彩兵书",
     "count": 10,
     "region": "bottom",
-    "anchor": "博彩兵书"
+    "anchor": "博彩兵书",
+    "disabled": true
   },
   {
     "url": "https://szfzml.mfuw8-bnsfa-gdaxhk.xyz/view.php?id=412",
     "name": "寿比南山",
+    "disabled": true,
+    "archive_tag": "用户指定封存",
+    "allowed_source_types": [
+      "decoded_script"
+    ],
     "count": 10,
     "region": "bottom",
     "anchor": "寿比南山"
+  },
+  {
+    "url": "https://szfzml.mfuw8-bnsfa-gdaxhk.xyz/view.php?id=674",
+    "name": "联盟高手",
+    "disabled": true,
+    "archive_tag": "用户指定封存",
+    "allowed_source_types": [
+      "decoded_script"
+    ],
+    "keywords": [
+      "绝杀十码",
+      "绝杀10码"
+    ],
+    "count": 10,
+    "region": "bottom",
+    "anchor": "联盟高手",
+    "issue_position_window": 10,
+    "onboarding_exception": {
+      "type": "user_special_addition",
+      "approved": true,
+      "scope": "用户明确批准不足10期特例；仅放宽历史数量",
+      "validated_issue": "227",
+      "valid_history_issues": [
+        "227",
+        "226",
+        "225",
+        "224",
+        "223",
+        "222",
+        "221",
+        "220",
+        "219"
+      ],
+      "missing_history_issues": [
+        "218"
+      ]
+    }
   },
   {
     "url": "https://szfzml.mfuw8-bnsfa-gdaxhk.xyz/view.php?id=249",
     "name": "弦无虚发",
     "count": 10,
     "region": "bottom",
-    "anchor": "弦无虚发"
+    "anchor": "弦无虚发",
+    "disabled": true
   },
   {
-    "url": "https://czcvzk.4n5g7-o871g-hqmkwz.work:29422/article/admin/6a1cd3290b8d229707caaaa4?url=tsp",
+    "url": "https://szfzml.mfuw8-bnsfa-gdaxhk.xyz/view.php?id=642",
+    "name": "弦无虚发",
+    "disabled": true,
+    "archive_tag": "用户指定封存",
+    "allowed_source_types": [
+      "decoded_script"
+    ],
+    "keywords": [
+      "绝杀十码"
+    ],
+    "count": 10,
+    "region": "bottom",
+    "anchor": "弦无虚发",
+    "issue_position_window": 10
+  },
+  {
+    "url": "https://czcvzk.4n5g7-o871g-hqmkwz.work:29422/article/manager/6a1cd3290b8d229707caaaa4?url=tsp",
+    "api_url": "https://czcvzk.4n5g7-o871g-hqmkwz.work:29422/api/proxy/manager-articles/6a1cd3290b8d229707caaaa4",
     "name": "淡忘如思",
+    "keywords": [
+      "绝杀十码"
+    ],
     "count": 10,
     "region": "bottom",
     "anchor": "淡忘如思",
@@ -1397,11 +1527,18 @@
     "special_parser": "identity_article_bottom_10"
   },
   {
-    "url": "https://czcvzk.4n5g7-o871g-hqmkwz.work:29422/article/admin/6a0953c6291caff3edcb8a49?url=tsp",
+    "url": "https://czcvzk.4n5g7-o871g-hqmkwz.work:29422/article/manager/6a0953c6291caff3edcb8a49?url=tsp",
+    "api_url": "https://czcvzk.4n5g7-o871g-hqmkwz.work:29422/api/proxy/manager-articles/6a0953c6291caff3edcb8a49",
     "name": "繁华若梦",
+    "keywords": [
+      "绝杀十码"
+    ],
     "count": 10,
     "region": "bottom",
-    "anchor": "繁华若梦"
+    "anchor": "繁华若梦",
+    "article_identity": "繁华若梦",
+    "issue_position_window": 10,
+    "special_parser": "identity_article_bottom_10"
   },
   {
     "url": "https://xozgdo.um2zi-vbge0-emngyq.work:29422/article/admin/6a14165e4346bc68aea4ef7f?url=sgnn",
@@ -1415,7 +1552,9 @@
     "name": "独立自主",
     "count": 10,
     "region": "bottom",
-    "anchor": "独立自主"
+    "anchor": "独立自主",
+    "disabled": true,
+    "archive_tag": "用户指定封存"
   },
   {
     "url": "https://fymxwnyg.ttmzc-muvns-udlfln.work:29455/article/admin/6a19abbae2187279227970e8?url=lhbd",
@@ -1486,7 +1625,9 @@
     "anchor": "港澳爆庄",
     "article_identity": "港澳爆庄",
     "issue_position_window": 10,
-    "special_parser": "identity_article_bottom_10"
+    "special_parser": "identity_article_bottom_10",
+    "disabled": true,
+    "archive_tag": "用户指定封存"
   },
   {
     "url": "https://8818.www19753a.com/read.php?tid=644",
@@ -1507,7 +1648,8 @@
     "keywords": [
       "绝杀十码"
     ],
-    "issue_position_window": 5
+    "issue_position_window": 5,
+    "disabled": true
   },
   {
     "url": "https://aszmkf.c3z3l-qrlqm-mwgccr.work:29411/article/admin/6a083d4708adb5ed7357f03b?url=lhw",
@@ -1546,6 +1688,9 @@
   {
     "url": "https://gjyzpnkx.1r42a-pilbo-hfynxw.xyz:16677/topic/680675.html",
     "name": "来轸方遒",
+    "allowed_source_types": [
+      "decoded_script"
+    ],
     "keywords": [
       "绝杀10码"
     ],
@@ -1564,11 +1709,17 @@
     "count": 10,
     "region": "top",
     "anchor": "闭月羞花[绝杀10码]",
+    "disabled": true,
+    "archive_tag": "已有站点重复",
     "issue_position_window": 3
   },
   {
     "url": "https://msbqxti.zhx2n-7v5x3-ivdpud.xyz:16677/topic/678143.html",
     "name": "一语中的",
+    "recent_history_count": 9,
+    "allowed_source_types": [
+      "decoded_script"
+    ],
     "keywords": [
       "杀特十码"
     ],
@@ -1579,6 +1730,9 @@
   {
     "url": "https://xoxtpupt.bvptr-i3mv8-pbjxin.work:17455/topic/173093.html",
     "name": "寂寞私聊",
+    "allowed_source_types": [
+      "decoded_script"
+    ],
     "keywords": [
       "绝杀十码"
     ],
@@ -1589,6 +1743,9 @@
   {
     "url": "https://kxhnibht.49x6o-xyonh-swqkpv.xyz:16677/topic/263510.html",
     "name": "一诺千金",
+    "allowed_source_types": [
+      "decoded_script"
+    ],
     "keywords": [
       "绝杀10码"
     ],
@@ -1600,6 +1757,9 @@
   {
     "url": "https://kxhnibht.49x6o-xyonh-swqkpv.xyz:16677/topic/263488.html",
     "name": "雨过天晴",
+    "allowed_source_types": [
+      "decoded_script"
+    ],
     "keywords": [
       "绝杀10码"
     ],
@@ -1627,7 +1787,8 @@
     ],
     "count": 10,
     "region": "top",
-    "anchor": "狙杀十码"
+    "anchor": "狙杀十码",
+    "browser": true
   },
   {
     "url": "https://kk.126861.com:1888/art_zhuanqu/10771.html",
@@ -1660,21 +1821,11 @@
     "anchor": "不以为然"
   },
   {
-    "url": "https://opfeal.zbwno-faau4-zilwkd.xyz:16677/topic/930776.html",
-    "name": "山水相逢",
-    "keywords": [
-      "绝杀10码"
-    ],
-    "count": 10,
-    "region": "top",
-    "anchor": "金马王[绝杀十码]山水相逢",
-    "stop_anchor": "上一篇：",
-    "issue_position_window": 10,
-    "special_parser": "shanshui_xiangfeng_top_10"
-  },
-  {
     "url": "https://alvjak.uh1h2-ru1qt-cyscbt.xyz:16677/topic/328412.html",
     "name": "以日继夜",
+    "allowed_source_types": [
+      "decoded_script"
+    ],
     "keywords": [
       "杀10码"
     ],
@@ -1686,6 +1837,9 @@
   {
     "url": "https://rpczmj.flzw4-yz5wn-mlrxxt.xyz/topic/769306.html",
     "name": "新竹论坛",
+    "allowed_source_types": [
+      "decoded_script"
+    ],
     "keywords": [
       "绝杀十码"
     ],
@@ -1720,6 +1874,7 @@
   {
     "url": "https://a.am6w.com/bbs1.aspx?id=sha04",
     "name": "葡京爆杀",
+    "recent_history_count": 8,
     "keywords": [
       "爆杀十码"
     ],
@@ -1771,6 +1926,9 @@
   {
     "url": "https://ocnrhq.du156-vb27w-tmhsed.xyz:16677/",
     "name": "白蛇传",
+    "allowed_source_types": [
+      "decoded_script"
+    ],
     "keywords": [
       "绝禁十码"
     ],
@@ -1781,6 +1939,9 @@
   {
     "url": "https://uvfsumi.v1t4x-1wx9k-vlvefm.xyz:16677/",
     "name": "醉八仙",
+    "allowed_source_types": [
+      "decoded_script"
+    ],
     "keywords": [
       "不买十码"
     ],
@@ -1803,6 +1964,10 @@
   {
     "url": "https://msbqxti.zhx2n-7v5x3-ivdpud.xyz:16677/",
     "name": "摇钱树",
+    "recent_history_count": 9,
+    "allowed_source_types": [
+      "decoded_script"
+    ],
     "keywords": [
       "绝杀十码"
     ],
@@ -1815,6 +1980,10 @@
   {
     "url": "https://msbqxti.zhx2n-7v5x3-ivdpud.xyz:16677/topic/682748.html",
     "name": "澹台明镜",
+    "recent_history_count": 9,
+    "allowed_source_types": [
+      "decoded_script"
+    ],
     "keywords": [
       "绝杀10码"
     ],
@@ -1826,6 +1995,9 @@
   {
     "url": "https://znnpwd.p42g1-zqmsb-jjrsfg.xyz:16677/topic/253931.html",
     "name": "杨角大师",
+    "allowed_source_types": [
+      "decoded_script"
+    ],
     "keywords": [
       "绝杀十码"
     ],
@@ -1837,6 +2009,9 @@
   {
     "url": "https://znnpwd.p42g1-zqmsb-jjrsfg.xyz:16677/topic/359809.html",
     "name": "蔚为大观",
+    "allowed_source_types": [
+      "decoded_script"
+    ],
     "keywords": [
       "＝绝杀10码"
     ],
@@ -1859,6 +2034,9 @@
   {
     "url": "https://a.995546.com/",
     "name": "横财富",
+    "allowed_source_types": [
+      "external_script"
+    ],
     "keywords": [
       "绝杀十码"
     ],
@@ -1882,6 +2060,9 @@
   {
     "url": "https://gxixcfq.4hxms-k65ek-jsvqzm.xyz:16677/topic/314317.html",
     "name": "十字路口",
+    "allowed_source_types": [
+      "decoded_script"
+    ],
     "keywords": [
       "绝杀十码"
     ],
@@ -1893,6 +2074,7 @@
   {
     "url": "https://lx11.www87127b.com:8443/bbs/103.html",
     "name": "首丘之思",
+    "recent_history_count": 8,
     "keywords": [
       "绝杀十码"
     ],
@@ -1905,6 +2087,9 @@
   {
     "url": "https://dwfoxsuz.ik1v5-stbjb-dsttyy.xyz:16677/topic/247430.html",
     "name": "香港码哥",
+    "allowed_source_types": [
+      "decoded_script"
+    ],
     "keywords": [
       "杀十码"
     ],
@@ -1916,6 +2101,9 @@
   {
     "url": "https://desbjkd.gfy8g-8k5mr-pekavx.xyz:16677/topic/328429.html",
     "name": "五福临门",
+    "allowed_source_types": [
+      "decoded_script"
+    ],
     "keywords": [
       "杀10码"
     ],
@@ -1927,6 +2115,9 @@
   {
     "url": "https://desbjkd.gfy8g-8k5mr-pekavx.xyz:16677/topic/281989.html",
     "name": "学习手册",
+    "allowed_source_types": [
+      "decoded_script"
+    ],
     "keywords": [
       "绝杀十码"
     ],
@@ -1944,11 +2135,15 @@
     "count": 10,
     "region": "top",
     "anchor": "破旧作品",
-    "issue_position_window": 10
+    "issue_position_window": 10,
+    "user_page_limit": 1
   },
   {
     "url": "https://mxiscni.nkh6s-vfni4-lwgfvw.xyz:16677/topic/257907.html",
     "name": "作茧自缚",
+    "allowed_source_types": [
+      "decoded_script"
+    ],
     "keywords": [
       "杀特十码"
     ],
@@ -1962,26 +2157,57 @@
     "url": "https://drxgkjt.uu1oc-eyjpt-uxyccu.xyz:29400/article/manager/6a33e8abdfa16552b923d35f?url=jyb",
     "api_url": "https://drxgkjt.uu1oc-eyjpt-uxyccu.xyz:29400/api/proxy/manager-articles/6a33e8abdfa16552b923d35f",
     "name": "飘逸宁人",
-    "keywords": ["绝杀十码"],
+    "keywords": [
+      "绝杀十码"
+    ],
     "count": 10,
     "region": "bottom",
     "anchor": "飘逸宁人",
-    "issue_position_window": 10
+    "issue_position_window": 10,
+    "disabled": true,
+    "archive_tag": "用户指定封存"
   },
   {
     "url": "https://hl.90216a.com/read.php?tid=526",
-    "name": "过眼云烟",
-    "keywords": ["绝杀十码"],
+    "name": "过往云烟",
+    "keywords": [
+      "绝杀十码"
+    ],
     "count": 10,
     "region": "bottom",
     "anchor": "过往云烟",
-    "issue_position_window": 10
+    "issue_position_window": 10,
+    "onboarding_exception": {
+      "type": "user_special_addition",
+      "approved": true,
+      "scope": "用户明确特例添加；允许历史不足10期，并不以现有缓存冲突阻挡配置；不改写缓存",
+      "validated_issue": "218",
+      "valid_history_issues": [
+        "216",
+        "217",
+        "218"
+      ],
+      "missing_history_issues": [
+        "209",
+        "210",
+        "211",
+        "212",
+        "213",
+        "214",
+        "215"
+      ],
+      "cache_conflict": "私房一肖 218期"
+    },
+    "disabled": true,
+    "archive_tag": "用户指定封存"
   },
   {
     "url": "https://rmpsmal.hi84f-zpj90-mvqksp.xyz:29477/article/manager/6a48e87157dc857ae1bf76f4?url=jfh",
     "api_url": "https://rmpsmal.hi84f-zpj90-mvqksp.xyz:29477/api/proxy/manager-articles/6a48e87157dc857ae1bf76f4",
     "name": "内幕王牌",
-    "keywords": ["绝杀十码"],
+    "keywords": [
+      "绝杀十码"
+    ],
     "count": 10,
     "region": "bottom",
     "anchor": "内幕王牌",
@@ -1991,7 +2217,9 @@
     "url": "https://hcsuuoy.nimo7-9bgj4-fmspxt.xyz:29466/article/manager/6a314408f4129ac0e1595573?url=cww",
     "api_url": "https://hcsuuoy.nimo7-9bgj4-fmspxt.xyz:29466/api/proxy/manager-articles/6a314408f4129ac0e1595573",
     "name": "稳准好料",
-    "keywords": ["绝杀十码"],
+    "keywords": [
+      "绝杀十码"
+    ],
     "count": 10,
     "region": "bottom",
     "anchor": "稳准好料",
@@ -2001,47 +2229,49 @@
     "url": "https://hcsuuoy.nimo7-9bgj4-fmspxt.xyz:29466/article/manager/6a4f2a8f4cd760c3a021ea24?url=cww",
     "api_url": "https://hcsuuoy.nimo7-9bgj4-fmspxt.xyz:29466/api/proxy/manager-articles/6a4f2a8f4cd760c3a021ea24",
     "name": "好料见证",
-    "keywords": ["绝杀十码"],
+    "keywords": [
+      "绝杀十码"
+    ],
     "count": 10,
     "region": "bottom",
     "anchor": "好料见证",
-    "issue_position_window": 10
+    "issue_position_window": 10,
+    "disabled": true,
+    "archive_tag": "用户指定封存"
   },
   {
     "url": "https://xjsjbkv.b3e4x-wxhjo-lbdbjg.xyz:29477/article/manager/6a3237dbee2f6b74a4a35bef?url=jbx",
     "api_url": "https://xjsjbkv.b3e4x-wxhjo-lbdbjg.xyz:29477/api/proxy/manager-articles/6a3237dbee2f6b74a4a35bef",
     "name": "财运资料",
-    "keywords": ["绝杀十码"],
+    "keywords": [
+      "绝杀十码"
+    ],
     "count": 10,
     "region": "bottom",
     "anchor": "财运资料",
     "issue_position_window": 10
   },
   {
-    "url": "https://xjsjbkv.b3e4x-wxhjo-lbdbjg.xyz:29477/article/manager/6a3251789064062ca99f2354?url=jbx",
-    "api_url": "https://xjsjbkv.b3e4x-wxhjo-lbdbjg.xyz:29477/api/proxy/manager-articles/6a3251789064062ca99f2354",
-    "name": "居安思危",
-    "keywords": ["绝杀十码"],
-    "count": 10,
-    "region": "bottom",
-    "anchor": "居安思危",
-    "issue_position_window": 10
-  },
-  {
     "url": "https://xjsjbkv.b3e4x-wxhjo-lbdbjg.xyz:29477/article/manager/6a326fafc50767750c400753?url=jbx",
     "api_url": "https://xjsjbkv.b3e4x-wxhjo-lbdbjg.xyz:29477/api/proxy/manager-articles/6a326fafc50767750c400753",
     "name": "你来关注",
-    "keywords": ["绝杀十码"],
+    "keywords": [
+      "绝杀十码"
+    ],
     "count": 10,
     "region": "bottom",
     "anchor": "你来关注",
-    "issue_position_window": 10
+    "issue_position_window": 10,
+    "disabled": true,
+    "archive_tag": "用户指定封存"
   },
   {
     "url": "https://xjsjbkv.b3e4x-wxhjo-lbdbjg.xyz:29477/article/manager/6a327519c50767750c400780?url=jbx",
     "api_url": "https://xjsjbkv.b3e4x-wxhjo-lbdbjg.xyz:29477/api/proxy/manager-articles/6a327519c50767750c400780",
     "name": "芸芸众生",
-    "keywords": ["绝杀十码"],
+    "keywords": [
+      "绝杀十码"
+    ],
     "count": 10,
     "region": "bottom",
     "anchor": "芸芸众生",
@@ -2050,30 +2280,39 @@
   {
     "url": "https://a.438822.com/",
     "name": "马经论坛",
-    "keywords": ["绝杀十码"],
+    "keywords": [
+      "绝杀十码"
+    ],
     "count": 10,
     "region": "bottom",
     "anchor": "澳门马经论坛[绝杀十码]",
     "stop_anchor": "澳门马经论坛[内部六尾]",
     "issue_position_window": 10,
-    "special_parser": "majing_forum_bottom_10"
+    "special_parser": "majing_forum_bottom_10",
+    "browser": true
   },
   {
     "url": "https://1214.775486.xyz/bbs/topic.php?id=20208",
     "name": "春蚓秋蛇",
-    "keywords": ["绝杀10码"],
+    "keywords": [
+      "绝杀10码"
+    ],
     "count": 10,
     "region": "bottom",
     "anchor": "春蚓秋蛇",
     "stop_anchor": "下一贴:",
     "issue_position_window": 10,
-    "special_parser": "chunyin_qiushe_bottom_10"
+    "special_parser": "chunyin_qiushe_bottom_10",
+    "disabled": true,
+    "archive_tag": "用户指定封存"
   },
   {
     "url": "https://zqrtppa.9swju-6haxn-dlkint.work:29455/article/manager/6a33a0e1dfa16552b923cad7?url=yjs",
     "api_url": "https://zqrtppa.9swju-6haxn-dlkint.work:29455/api/proxy/manager-articles/6a33a0e1dfa16552b923cad7",
     "name": "美人兮美",
-    "keywords": ["绝杀十码"],
+    "keywords": [
+      "绝杀十码"
+    ],
     "count": 10,
     "region": "bottom",
     "anchor": "美人兮美",
@@ -2085,7 +2324,9 @@
     "url": "https://hquomm.20t3f-0yztv-jiozun.xyz:29444/article/manager/6a32938314849ffd48305836?url=dgd",
     "api_url": "https://hquomm.20t3f-0yztv-jiozun.xyz:29444/api/proxy/manager-articles/6a32938314849ffd48305836",
     "name": "独占鳌头",
-    "keywords": ["绝杀十码"],
+    "keywords": [
+      "绝杀十码"
+    ],
     "count": 10,
     "region": "bottom",
     "anchor": "独占鳌头",
@@ -2097,7 +2338,9 @@
     "url": "https://hquomm.20t3f-0yztv-jiozun.xyz:29444/article/manager/6a329d4b73fa32d0b73c0c8b?url=dgd",
     "api_url": "https://hquomm.20t3f-0yztv-jiozun.xyz:29444/api/proxy/manager-articles/6a329d4b73fa32d0b73c0c8b",
     "name": "可歌可泣",
-    "keywords": ["绝杀十码"],
+    "keywords": [
+      "绝杀十码"
+    ],
     "count": 10,
     "region": "bottom",
     "anchor": "可歌可泣",
@@ -2109,7 +2352,9 @@
     "url": "https://cahgjib.5blx9-z8506-ekiwxc.work:29488/article/manager/6a4d2ee457dc857ae1c0d491?url=lqz",
     "api_url": "https://cahgjib.5blx9-z8506-ekiwxc.work:29488/api/proxy/manager-articles/6a4d2ee457dc857ae1c0d491",
     "name": "救星辉煌",
-    "keywords": ["绝杀十码"],
+    "keywords": [
+      "绝杀十码"
+    ],
     "count": 10,
     "region": "bottom",
     "anchor": "救星辉煌",
@@ -2121,7 +2366,9 @@
     "url": "https://pgyzulb.iwnn7-gyyip-pnpfqv.work:29477/article/manager/6a47d35e57dc857ae1bf3efe?url=bflc",
     "api_url": "https://pgyzulb.iwnn7-gyyip-pnpfqv.work:29477/api/proxy/manager-articles/6a47d35e57dc857ae1bf3efe",
     "name": "原任马行",
-    "keywords": ["绝杀十码"],
+    "keywords": [
+      "绝杀十码"
+    ],
     "count": 10,
     "region": "bottom",
     "anchor": "原任马行",
@@ -2133,7 +2380,9 @@
     "url": "https://fansiggg.jc2q8-whfmg-vajjui.xyz:29433/article/manager/6a096d91291caff3edcb8bef?url=dyj",
     "api_url": "https://fansiggg.jc2q8-whfmg-vajjui.xyz:29433/api/proxy/manager-articles/6a096d91291caff3edcb8bef",
     "name": "秋收冬藏",
-    "keywords": ["绝杀十码"],
+    "keywords": [
+      "绝杀十码"
+    ],
     "count": 10,
     "region": "bottom",
     "anchor": "秋收冬藏",
@@ -2145,7 +2394,9 @@
     "url": "https://fansiggg.jc2q8-whfmg-vajjui.xyz:29433/article/manager/6a095b1d291caff3edcb8aa4?url=dyj",
     "api_url": "https://fansiggg.jc2q8-whfmg-vajjui.xyz:29433/api/proxy/manager-articles/6a095b1d291caff3edcb8aa4",
     "name": "极品赌侠",
-    "keywords": ["绝杀十码"],
+    "keywords": [
+      "绝杀十码"
+    ],
     "count": 10,
     "region": "bottom",
     "anchor": "极品赌侠",
@@ -2156,7 +2407,9 @@
   {
     "url": "https://nlafoq9v.dh5565656.xyz/bbs/topic.php?id=939",
     "name": "钱彩两得",
-    "keywords": ["绝杀10码"],
+    "keywords": [
+      "绝杀10码"
+    ],
     "count": 10,
     "region": "bottom",
     "anchor": "澳彩总站",
@@ -2164,12 +2417,20 @@
     "article_identity": "钱彩两得",
     "issue_position_window": 10,
     "encoding": "gb18030",
-    "special_parser": "qiancai_liangde_bottom_10"
+    "special_parser": "qiancai_liangde_bottom_10",
+    "disabled": true,
+    "archive_tag": "用户指定封存"
   },
   {
     "url": "https://ssytmks.kcyub-abvtn-uvalbe.xyz:16677/",
     "name": "师太",
-    "keywords": ["师太", "绝杀十码"],
+    "allowed_source_types": [
+      "decoded_script"
+    ],
+    "keywords": [
+      "师太",
+      "绝杀十码"
+    ],
     "count": 10,
     "region": "top",
     "anchor": "大家发(绝杀10码)",
@@ -2181,26 +2442,58 @@
   {
     "url": "https://5ipaulfv56.1081085bbs1.shop/bbs/topic.php?id=2911",
     "name": "实至名归",
-    "keywords": ["绝杀十码"],
+    "keywords": [
+      "绝杀十码"
+    ],
     "count": 10,
     "region": "bottom",
     "anchor": "实至名归[绝杀十码]共同致富",
     "stop_anchor": "下一贴:",
     "issue_position_window": 10,
     "special_parser": "shizhiminggui_bottom_10",
+    "disabled": true,
+    "archive_tag": "用户指定封存",
     "onboarding_exception": {
       "type": "history_shortage",
       "approved": true,
       "scope": "本次允许特例添加，仅放宽历史数量",
-      "valid_issues": ["205", "206", "207", "208", "209", "210", "211", "212", "213", "214"],
+      "valid_issues": [
+        "205",
+        "206",
+        "207",
+        "208",
+        "209",
+        "210",
+        "211",
+        "212",
+        "213",
+        "214"
+      ],
       "missing_issues": []
     }
+  },
+  {
+    "url": "https://5ipaulfv56.1081085bbs1.shop/bbs/topic.php?id=3038",
+    "name": "郁郁青青",
+    "keywords": [
+      "绝杀十码",
+      "绝杀10码"
+    ],
+    "count": 10,
+    "region": "bottom",
+    "anchor": "郁郁青青",
+    "stop_anchor": "下一贴:",
+    "issue_position_window": 10,
+    "disabled": true,
+    "archive_tag": "用户指定封存"
   },
   {
     "url": "https://knfoaep.ivqs8-1depw-yoirtw.xyz:29444/article/manager/6a15bde5806b655fd89b3fbd?url=lf",
     "api_url": "https://knfoaep.ivqs8-1depw-yoirtw.xyz:29444/api/proxy/manager-articles/6a15bde5806b655fd89b3fbd",
     "name": "日积月累",
-    "keywords": ["绝杀十码"],
+    "keywords": [
+      "绝杀十码"
+    ],
     "count": 10,
     "region": "bottom",
     "anchor": "日积月累",
@@ -2211,13 +2504,29 @@
       "type": "invalid_duplicate_baseline",
       "approved": true,
       "scope": "用户明确特例添加；仅放宽正式判重基线无效门禁",
-      "validated_issues": ["206", "207", "208", "209", "210", "211", "212", "213", "214", "215"]
+      "validated_issues": [
+        "206",
+        "207",
+        "208",
+        "209",
+        "210",
+        "211",
+        "212",
+        "213",
+        "214",
+        "215"
+      ]
     }
   },
   {
     "url": "https://scbnsyz.3dl0e-87g6y-coruzs.xyz:16677/",
     "name": "幽冥战神",
-    "keywords": ["这十码淘汰"],
+    "allowed_source_types": [
+      "decoded_script"
+    ],
+    "keywords": [
+      "这十码淘汰"
+    ],
     "count": 10,
     "region": "top",
     "anchor": "幽冥战神『杀特十码』",
@@ -2226,14 +2535,18 @@
       "type": "invalid_duplicate_baseline",
       "approved": true,
       "scope": "用户明确特例添加；仅放宽正式判重基线无效门禁",
-      "validated_issues": ["216"]
+      "validated_issues": [
+        "216"
+      ]
     }
   },
   {
     "url": "https://wigrzse.3acpt-tc9xa-kzxasm.xyz:29444/article/manager/6a3c099b018539c611cc53f9?url=pg",
     "api_url": "https://wigrzse.3acpt-tc9xa-kzxasm.xyz:29444/api/proxy/manager-articles/6a3c099b018539c611cc53f9",
     "name": "横财发家",
-    "keywords": ["绝杀十码"],
+    "keywords": [
+      "绝杀十码"
+    ],
     "count": 10,
     "region": "bottom",
     "anchor": "横财发家",
@@ -2244,32 +2557,41 @@
       "type": "invalid_duplicate_baseline",
       "approved": true,
       "scope": "用户明确特例添加；仅放宽正式判重基线无效门禁",
-      "validated_issues": ["216"]
+      "validated_issues": [
+        "216"
+      ]
     }
   },
   {
     "url": "https://wigrzse.3acpt-tc9xa-kzxasm.xyz:29444/article/manager/6a1572238be59b17287c6ddd?url=pg",
     "api_url": "https://wigrzse.3acpt-tc9xa-kzxasm.xyz:29444/api/proxy/manager-articles/6a1572238be59b17287c6ddd",
     "name": "潮牌天下",
-    "keywords": ["绝杀十码"],
+    "keywords": [
+      "绝杀十码"
+    ],
     "count": 10,
     "region": "bottom",
     "anchor": "潮牌天下",
     "article_identity": "潮牌天下",
     "issue_position_window": 10,
+    "skip_historical_duplicate_rows": true,
     "special_parser": "identity_article_bottom_10",
     "onboarding_exception": {
       "type": "invalid_duplicate_baseline",
       "approved": true,
       "scope": "用户明确特例添加；仅放宽正式判重基线无效门禁",
-      "validated_issues": ["216"]
+      "validated_issues": [
+        "216"
+      ]
     }
   },
   {
     "url": "https://zxlfxpp.2n0je-9ecrg-kadbbu.work:29411/article/manager/6a141b21597e16d57eacb512?url=tmw",
     "api_url": "https://zxlfxpp.2n0je-9ecrg-kadbbu.work:29411/api/proxy/manager-articles/6a141b21597e16d57eacb512",
     "name": "五鬼抓马",
-    "keywords": ["绝杀十码"],
+    "keywords": [
+      "绝杀十码"
+    ],
     "count": 10,
     "region": "bottom",
     "anchor": "五鬼抓马",
@@ -2280,14 +2602,18 @@
       "type": "invalid_duplicate_baseline",
       "approved": true,
       "scope": "用户明确特例添加；仅放宽正式判重基线无效门禁",
-      "validated_issues": ["216"]
+      "validated_issues": [
+        "216"
+      ]
     }
   },
   {
     "url": "https://knrpona.3b0v8-i91jw-dlnvfg.work:29433/article/manager/6a633e72b3f65fed7d61ed8a?url=dfh",
     "api_url": "https://knrpona.3b0v8-i91jw-dlnvfg.work:29433/api/proxy/manager-articles/6a633e72b3f65fed7d61ed8a",
     "name": "肝胆相渣",
-    "keywords": ["绝杀十码"],
+    "keywords": [
+      "绝杀十码"
+    ],
     "count": 10,
     "region": "bottom",
     "anchor": "肝胆相渣",
@@ -2298,20 +2624,27 @@
       "type": "invalid_duplicate_baseline",
       "approved": true,
       "scope": "用户明确特例添加；仅放宽正式判重基线无效门禁",
-      "validated_issues": ["216"]
+      "validated_issues": [
+        "216"
+      ]
     }
   },
   {
     "url": "https://a.ttss.vip/list.aspx?id=79&page=1",
     "name": "告别那时",
-    "link_keywords": ["告别那时", "【绝杀10码】"],
-    "keywords": ["绝杀10码"],
+    "link_keywords": [
+      "告别那时",
+      "【绝杀10码】"
+    ],
+    "keywords": [
+      "绝杀10码"
+    ],
     "count": 10,
     "region": "top",
     "anchor": "告别那时",
     "article_identity": "告别那时",
     "issue_position_window": 5,
-    "pagination_limit": 9,
+    "pagination_limit": 40,
     "pagination_next_text": "下一页",
     "special_parser": "ttss_paginated_identity_top_10",
     "onboarding_exception": {
@@ -2319,21 +2652,35 @@
       "approved": true,
       "scope": "用户明确允许两站不足10期加入；仅放宽历史数量",
       "validated_issue": "218",
-      "valid_history_issues": ["218", "216", "213", "212"],
-      "missing_history_issues": ["217", "215", "214"]
+      "valid_history_issues": [
+        "218",
+        "216",
+        "213",
+        "212"
+      ],
+      "missing_history_issues": [
+        "217",
+        "215",
+        "214"
+      ]
     }
   },
   {
     "url": "https://a.ttss.vip/list.aspx?id=79&page=1",
     "name": "私房一肖",
-    "link_keywords": ["私房一肖", "【绝杀10码】"],
-    "keywords": ["绝杀10码"],
+    "link_keywords": [
+      "私房一肖",
+      "【绝杀10码】"
+    ],
+    "keywords": [
+      "绝杀10码"
+    ],
     "count": 10,
     "region": "top",
     "anchor": "私房一肖",
     "article_identity": "私房一肖",
     "issue_position_window": 5,
-    "pagination_limit": 9,
+    "pagination_limit": 40,
     "pagination_next_text": "下一页",
     "special_parser": "ttss_paginated_identity_top_10",
     "onboarding_exception": {
@@ -2341,8 +2688,2230 @@
       "approved": true,
       "scope": "用户明确允许两站不足10期加入；仅放宽历史数量",
       "validated_issue": "218",
-      "valid_history_issues": ["218", "217", "215", "214", "213"],
-      "missing_history_issues": ["216"]
+      "valid_history_issues": [
+        "218",
+        "217",
+        "215",
+        "214",
+        "213"
+      ],
+      "missing_history_issues": [
+        "216"
+      ]
     }
+  },
+  {
+    "url": "https://nwrkkmv.rx287-rkrai-jsjccc.xyz:29499/article/manager/6a55ed81f447e21b02daa683?url=ggz",
+    "api_url": "https://nwrkkmv.rx287-rkrai-jsjccc.xyz:29499/api/proxy/manager-articles/6a55ed81f447e21b02daa683",
+    "name": "雷霆万钧",
+    "keywords": [
+      "绝杀十码"
+    ],
+    "count": 10,
+    "region": "bottom",
+    "anchor": "雷霆万钧",
+    "article_identity": "雷霆万钧",
+    "issue_position_window": 10,
+    "special_parser": "identity_article_bottom_10",
+    "onboarding_exception": {
+      "type": "user_special_addition",
+      "approved": true,
+      "scope": "用户明确特例添加；并不以现有缓存冲突阻挡配置；不改写缓存",
+      "validated_issue": "218",
+      "valid_history_issues": [
+        "209",
+        "210",
+        "211",
+        "212",
+        "213",
+        "214",
+        "215",
+        "216",
+        "217",
+        "218"
+      ],
+      "missing_history_issues": [],
+      "cache_conflict": "私房一肖 218期"
+    }
+  },
+  {
+    "url": "https://wigrzse.3acpt-tc9xa-kzxasm.xyz:29444/article/manager/6a2d9c70d164c1deb6244746?url=pg",
+    "api_url": "https://wigrzse.3acpt-tc9xa-kzxasm.xyz:29444/api/proxy/manager-articles/6a2d9c70d164c1deb6244746",
+    "name": "勤能补拙",
+    "keywords": [
+      "绝杀十码"
+    ],
+    "count": 10,
+    "region": "bottom",
+    "anchor": "勤能补拙",
+    "article_identity": "勤能补拙",
+    "issue_position_window": 10,
+    "special_parser": "identity_article_bottom_10",
+    "onboarding_exception": {
+      "type": "user_special_addition",
+      "approved": true,
+      "scope": "用户明确特例添加；并不以现有缓存冲突阻挡配置；不改写缓存",
+      "validated_issue": "218",
+      "valid_history_issues": [
+        "209",
+        "210",
+        "211",
+        "212",
+        "213",
+        "214",
+        "215",
+        "216",
+        "217",
+        "218"
+      ],
+      "missing_history_issues": [],
+      "cache_conflict": "私房一肖 218期"
+    }
+  },
+  {
+    "url": "https://i97lk4jb16.333741bbs1.shop/bbs/topic.php?id=2788",
+    "name": "红极一时",
+    "keywords": [
+      "绝杀十码"
+    ],
+    "count": 10,
+    "region": "bottom",
+    "anchor": "红极一时",
+    "issue_position_window": 10,
+    "onboarding_exception": {
+      "type": "user_special_addition",
+      "approved": true,
+      "scope": "用户明确特例添加；允许历史不足10期，并不以现有缓存冲突阻挡配置；不改写缓存",
+      "validated_issue": "218",
+      "valid_history_issues": [
+        "216",
+        "217",
+        "218"
+      ],
+      "missing_history_issues": [
+        "209",
+        "210",
+        "211",
+        "212",
+        "213",
+        "214",
+        "215"
+      ],
+      "cache_conflict": "私房一肖 218期"
+    },
+    "disabled": true,
+    "archive_tag": "用户指定封存"
+  },
+  {
+    "url": "https://ifnkblf.e4kce-krr7o-vuvqhd.work:29411/article/manager/6a74b2812822d465035fff6e?url=scyd",
+    "api_url": "https://ifnkblf.e4kce-krr7o-vuvqhd.work:29411/api/proxy/manager-articles/6a74b2812822d465035fff6e",
+    "name": "一方独霸",
+    "keywords": [
+      "绝杀十码"
+    ],
+    "count": 10,
+    "region": "bottom",
+    "anchor": "一方独霸",
+    "article_identity": "一方独霸",
+    "issue_position_window": 10,
+    "special_parser": "identity_article_bottom_10"
+  },
+  {
+    "url": "https://8818.www71986a.com/read.php?tid=667",
+    "name": "怪咖小生",
+    "keywords": [
+      "绝杀10码"
+    ],
+    "count": 10,
+    "region": "bottom",
+    "anchor": "怪咖小生",
+    "issue_position_window": 10
+  },
+  {
+    "url": "https://hl.www25195a.com/read.php?tid=678",
+    "name": "世纪星王",
+    "keywords": [
+      "绝杀十码"
+    ],
+    "count": 10,
+    "region": "bottom",
+    "anchor": "世纪星王",
+    "issue_position_window": 10,
+    "disabled": true,
+    "archive_tag": "用户指定封存"
+  },
+  {
+    "url": "https://buzsxio.821n4-hgj04-edkrft.xyz:29455/article/manager/6a1304885eabe2c9e91d8755?url=bxj",
+    "api_url": "https://buzsxio.821n4-hgj04-edkrft.xyz:29455/api/proxy/manager-articles/6a1304885eabe2c9e91d8755",
+    "name": "情窦顿开",
+    "keywords": [
+      "绝杀十码"
+    ],
+    "count": 10,
+    "region": "bottom",
+    "anchor": "情窦顿开",
+    "article_identity": "情窦顿开",
+    "issue_position_window": 10,
+    "special_parser": "identity_article_bottom_10"
+  },
+  {
+    "url": "https://yqjfwqsc.1dayz-aetgp-kbjidr.xyz:16677/topic/682038.html",
+    "name": "潮汐文脉",
+    "allowed_source_types": [
+      "decoded_script"
+    ],
+    "keywords": [
+      "绝杀七码"
+    ],
+    "count": 7,
+    "region": "top",
+    "anchor": "潮汐文脉",
+    "issue_position_window": 10,
+    "special_parser": "chaoxi_hyphen_top_7"
+  },
+  {
+    "url": "https://yqjfwqsc.1dayz-aetgp-kbjidr.xyz:16677/topic/682022.html",
+    "name": "怆地呼天",
+    "allowed_source_types": [
+      "decoded_script"
+    ],
+    "keywords": [
+      "稳杀10码"
+    ],
+    "count": 10,
+    "region": "bottom",
+    "anchor": "怆地呼天",
+    "issue_position_window": 10
+  },
+  {
+    "url": "https://kcyeko.bzx7a-tl1us-cfcaei.xyz:16677/topic/610837.html",
+    "name": "深林鹿饮",
+    "allowed_source_types": [
+      "decoded_script"
+    ],
+    "keywords": [
+      "绝杀10码"
+    ],
+    "count": 10,
+    "region": "top",
+    "anchor": "深林鹿饮",
+    "issue_position_window": 10
+  },
+  {
+    "url": "https://qarppl.154bo-trld9-qppors.xyz:16677/topic/282337.html",
+    "name": "恩将仇报",
+    "allowed_source_types": [
+      "decoded_script"
+    ],
+    "keywords": [
+      "精杀10码"
+    ],
+    "count": 10,
+    "region": "top",
+    "anchor": "恩将仇报",
+    "issue_position_window": 10
+  },
+  {
+    "url": "https://rqvvaxwq.w30m7-xd23l-ebrbbj.xyz/topic/768585.html",
+    "name": "暗室不欺",
+    "allowed_source_types": [
+      "decoded_script"
+    ],
+    "keywords": [
+      "绝杀七码"
+    ],
+    "count": 7,
+    "region": "bottom",
+    "anchor": "暗室不欺",
+    "issue_position_window": 10
+  },
+  {
+    "url": "https://gjyzpnkx.1r42a-pilbo-hfynxw.xyz:16677/topic/680682.html",
+    "name": "耿耿在怀",
+    "allowed_source_types": [
+      "decoded_script"
+    ],
+    "keywords": [
+      "绝杀十码"
+    ],
+    "count": 10,
+    "region": "top",
+    "anchor": "耿耿在怀",
+    "issue_position_window": 10
+  },
+  {
+    "url": "https://gjyzpnkx.1r42a-pilbo-hfynxw.xyz:16677/topic/680678.html",
+    "name": "泛家浮宅",
+    "allowed_source_types": [
+      "decoded_script"
+    ],
+    "keywords": [
+      "稳杀7码"
+    ],
+    "count": 7,
+    "region": "top",
+    "anchor": "泛家浮宅",
+    "issue_position_window": 10
+  },
+  {
+    "url": "https://azjjosd.scyms-vek4g-yubibb.xyz:17455/topic/253943.html",
+    "name": "拳王杀料",
+    "allowed_source_types": [
+      "decoded_script"
+    ],
+    "keywords": [
+      "绝杀10码"
+    ],
+    "count": 10,
+    "region": "top",
+    "anchor": "拳王杀料",
+    "issue_position_window": 10
+  },
+  {
+    "url": "https://msbqxti.zhx2n-7v5x3-ivdpud.xyz:16677/topic/678138.html",
+    "name": "甜言蜜语",
+    "allowed_source_types": [
+      "decoded_script"
+    ],
+    "keywords": [
+      "绝杀八码"
+    ],
+    "count": 8,
+    "region": "bottom",
+    "anchor": "甜言蜜语",
+    "issue_position_window": 10
+  },
+  {
+    "url": "https://msbqxti.zhx2n-7v5x3-ivdpud.xyz:16677/topic/682756.html",
+    "name": "闾丘寒江",
+    "allowed_source_types": [
+      "decoded_script"
+    ],
+    "keywords": [
+      "稳杀8码"
+    ],
+    "count": 8,
+    "region": "top",
+    "anchor": "闾丘寒江",
+    "issue_position_window": 10
+  },
+  {
+    "url": "https://msbqxti.zhx2n-7v5x3-ivdpud.xyz:16677/topic/682738.html",
+    "name": "拓跋飞雪",
+    "keywords": [
+      "杀10码"
+    ],
+    "count": 10,
+    "region": "top",
+    "anchor": "拓跋飞雪",
+    "disabled": true,
+    "archive_tag": "已有站点重复",
+    "issue_position_window": 10
+  },
+  {
+    "url": "https://lsacps.fawai-z2rwv-gfzplr.xyz:16677/topic/215985.html",
+    "name": "自贻伊咎",
+    "allowed_source_types": [
+      "decoded_script"
+    ],
+    "keywords": [
+      "无敌杀10码"
+    ],
+    "count": 10,
+    "region": "top",
+    "anchor": "自贻伊咎",
+    "issue_position_window": 10
+  },
+  {
+    "url": "https://xoxtpupt.bvptr-i3mv8-pbjxin.work:17455/topic/205693.html",
+    "name": "触摸侦探",
+    "allowed_source_types": [
+      "decoded_script"
+    ],
+    "keywords": [
+      "无敌杀10码"
+    ],
+    "count": 10,
+    "region": "top",
+    "anchor": "触摸侦探",
+    "issue_position_window": 10
+  },
+  {
+    "url": "https://2.www39169b.com:888/gsbl/s05.html",
+    "name": "何必当真",
+    "keywords": [
+      "绝杀10码"
+    ],
+    "count": 10,
+    "region": "bottom",
+    "anchor": "何必当真",
+    "issue_position_window": 10,
+    "onboarding_exception": {
+      "type": "user_formal_batch_authorization",
+      "approved": true,
+      "scope": "用户明确将本站纳入28站正式验证；仅记录历史不足10期，不放宽栏目、方向、期数、数量、来源或冲突校验",
+      "validated_issue": "218",
+      "valid_history_issues": [
+        "213",
+        "214",
+        "215",
+        "216",
+        "217",
+        "218",
+        "219"
+      ],
+      "missing_history_issues": [
+        "209",
+        "210",
+        "211",
+        "212"
+      ]
+    }
+  },
+  {
+    "url": "https://2.www39169b.com:888/gsbl/s19.html",
+    "name": "卡布奇诺",
+    "keywords": [
+      "杀十码"
+    ],
+    "count": 10,
+    "region": "bottom",
+    "anchor": "卡布奇诺",
+    "issue_position_window": 10,
+    "onboarding_exception": {
+      "type": "user_formal_batch_authorization",
+      "approved": true,
+      "scope": "用户明确将本站纳入28站正式验证；仅记录历史不足10期，不放宽栏目、方向、期数、数量、来源或冲突校验",
+      "validated_issue": "218",
+      "valid_history_issues": [
+        "216",
+        "217",
+        "218",
+        "219"
+      ],
+      "missing_history_issues": [
+        "209",
+        "210",
+        "211",
+        "212",
+        "213",
+        "214",
+        "215"
+      ]
+    }
+  },
+  {
+    "url": "https://wftkvim.2skgq-zrzcm-sjtjkq.xyz:16677/topic/465688.html",
+    "name": "東山再起",
+    "allowed_source_types": [
+      "decoded_script"
+    ],
+    "keywords": [
+      "绝杀10码"
+    ],
+    "count": 10,
+    "region": "top",
+    "anchor": "東山再起",
+    "issue_position_window": 10,
+    "cache_issue_exceptions": {
+      "229": {
+        "approved": true,
+        "count": 8,
+        "reason": "用户明确要求229期不验证并直接写入8个号码"
+      }
+    }
+  },
+  {
+    "url": "https://sadoleu.rznla-fgwyr-nzqalp.xyz:16677/topic/530164.html",
+    "name": "微澜风清",
+    "allowed_source_types": [
+      "decoded_script"
+    ],
+    "keywords": [
+      "绝杀八码"
+    ],
+    "count": 8,
+    "region": "top",
+    "anchor": "微澜风清",
+    "issue_position_window": 10
+  },
+  {
+    "url": "https://gxixcfq.4hxms-k65ek-jsvqzm.xyz:16677/topic/313539.html",
+    "name": "声名鹊起",
+    "allowed_source_types": [
+      "decoded_script"
+    ],
+    "keywords": [
+      "稳杀十码"
+    ],
+    "count": 10,
+    "region": "bottom",
+    "anchor": "声名鹊起",
+    "issue_position_window": 10
+  },
+  {
+    "url": "https://sunbkqa.khd56-rzfaq-drqccw.xyz:16677/topic/458251.html",
+    "name": "七步之才",
+    "allowed_source_types": [
+      "decoded_script"
+    ],
+    "keywords": [
+      "绝杀10码"
+    ],
+    "count": 10,
+    "region": "bottom",
+    "anchor": "七步之才",
+    "issue_position_window": 10
+  },
+  {
+    "url": "https://wrbavfzg.e0fjk-5tc7b-mqquzq.work:16677/topic/217706.html",
+    "name": "松风听韵",
+    "keywords": [
+      "稳杀10码"
+    ],
+    "count": 10,
+    "region": "bottom",
+    "anchor": "松风听韵",
+    "disabled": true,
+    "archive_tag": "已有站点重复",
+    "issue_position_window": 10
+  },
+  {
+    "url": "https://552554.com.xn--61b2aeb.xn--h2brj9c:1888/sp/028.html",
+    "name": "皆大欢喜",
+    "keywords": [
+      "杀特十码"
+    ],
+    "count": 10,
+    "region": "bottom",
+    "anchor": "皆大欢喜",
+    "issue_position_window": 10
+  },
+  {
+    "url": "https://kk.212557a.com:1888/art_zhuanqu/7710.html",
+    "name": "光头小哥",
+    "keywords": [
+      "绝杀十码"
+    ],
+    "count": 10,
+    "region": "top",
+    "anchor": "光头小哥",
+    "issue_position_window": 10
+  },
+  {
+    "url": "https://h6.118t118.com:8443/user?userId=273880",
+    "release_api_url": "https://tu.118tapi.com/api/v1/user/release",
+    "detail_api_url": "https://tu.118tapi.com/api/v1/discuss/detail",
+    "name": "来财资料",
+    "keywords": [
+      "杀码"
+    ],
+    "count": 10,
+    "region": "top",
+    "anchor": "来财资料",
+    "article_user_id": "273880",
+    "lottery_type": 2,
+    "release_type": 1,
+    "release_page_limit": 1,
+    "title_keywords": [
+      "杀10码中特"
+    ],
+    "issue_position_window": 10,
+    "special_parser": "discuss_user_release_top_10"
+  },
+  {
+    "url": "https://pxeeptca.oc0g1-jyj04-onsfnv.xyz:16677/",
+    "name": "花仙子",
+    "allowed_source_types": [
+      "decoded_script"
+    ],
+    "keywords": [
+      "走势杀码"
+    ],
+    "count": 7,
+    "region": "bottom",
+    "anchor": "花仙子《绝杀七码》",
+    "stop_anchor": "点击投注",
+    "issue_position_window": 10,
+    "special_parser": "huaxianzi_bottom_7"
+  },
+  {
+    "url": "https://4.48kk49.com:1888/Article/ar_content/id/1533/tid/82.html",
+    "name": "开岸提出",
+    "article_id": "1533",
+    "article_identity": "开岸精心研究",
+    "keywords": [
+      "禁杀10码"
+    ],
+    "count": 10,
+    "region": "top",
+    "anchor": "开岸精心研究",
+    "stop_anchor": "上一篇:",
+    "issue_position_window": 10,
+    "onboarding_exception": {
+      "type": "user_special_addition",
+      "approved": true,
+      "scope": "用户明确特例加入；仅放宽历史数量；不放宽文章身份、栏目、方向、期数、数量、来源或候选冲突校验",
+      "validated_issue": "225",
+      "valid_history_issues": [
+        "225"
+      ],
+      "missing_history_issues": [
+        "209",
+        "210",
+        "211",
+        "212",
+        "213",
+        "214",
+        "215",
+        "216",
+        "217",
+        "218",
+        "219",
+        "220",
+        "221",
+        "222",
+        "223",
+        "224"
+      ],
+      "identity_note": "用户名称为开岸提出；页面实际文章标题为开岸精心研究"
+    }
+  },
+  {
+    "url": "https://4.48kk49.com:1888/Article/ar_content/id/1453/tid/82.html",
+    "name": "剑圣威震",
+    "article_id": "1453",
+    "article_identity": "剑圣威震武林",
+    "keywords": [
+      "禁杀十码"
+    ],
+    "count": 10,
+    "region": "top",
+    "anchor": "剑圣威震武林",
+    "stop_anchor": "上一篇:",
+    "issue_position_window": 10,
+    "onboarding_exception": {
+      "type": "user_special_addition",
+      "approved": true,
+      "scope": "用户明确特例加入；仅放宽历史数量；不放宽文章身份、栏目、方向、期数、数量、来源或候选冲突校验",
+      "validated_issue": "225",
+      "valid_history_issues": [
+        "219",
+        "220",
+        "221",
+        "222",
+        "223",
+        "224",
+        "225"
+      ],
+      "missing_history_issues": [
+        "209",
+        "210",
+        "211",
+        "212",
+        "213",
+        "214",
+        "215",
+        "216",
+        "217",
+        "218"
+      ]
+    }
+  },
+  {
+    "url": "https://rhzwtyvf.bd8x5-t5hh0-dfmkwv.xyz:16677/topic/448301.html",
+    "name": "自由自在",
+    "allowed_source_types": [
+      "decoded_script"
+    ],
+    "keywords": [
+      "追杀10码"
+    ],
+    "count": 10,
+    "region": "bottom",
+    "anchor": "自由自在",
+    "stop_anchor": "上一篇:",
+    "issue_position_window": 30
+  },
+  {
+    "url": "https://kk.01495252a.com:1888/bbs/gsb4",
+    "name": "摇钱树第二",
+    "keywords": [
+      "绝杀10码"
+    ],
+    "count": 10,
+    "region": "top",
+    "anchor": "摇钱树精选【杀10码】",
+    "issue_position_window": 10,
+    "browser": true,
+    "browser_wait_until": "load"
+  },
+  {
+    "url": "https://4.48kk49.com:1888/Article/ar_content/id/135/tid/8.html",
+    "name": "赛玛荟独家",
+    "article_id": "135",
+    "keywords": [
+      "绝杀"
+    ],
+    "count": 10,
+    "region": "top",
+    "anchor": "赛玛荟独家[绝杀十玛]",
+    "stop_anchor": "上一篇:",
+    "issue_position_window": 10
+  },
+  {
+    "url": "https://4.48kk49.com:1888/Article/ar_content/id/33/tid/12.html",
+    "name": "金光大道",
+    "article_id": "33",
+    "keywords": [
+      "传真"
+    ],
+    "count": 10,
+    "region": "top",
+    "anchor": "金光大道期期",
+    "stop_anchor": "上一篇:",
+    "issue_position_window": 10,
+    "onboarding_exception": {
+      "type": "user_special_addition",
+      "approved": true,
+      "scope": "用户明确要求10个站点加入；只按现有期数判重，225/224任一期可作为基准；仅放宽历史数量",
+      "validated_issue": "225",
+      "valid_history_issues": [
+        "225",
+        "224",
+        "223",
+        "222",
+        "220",
+        "219",
+        "218"
+      ],
+      "missing_history_issues": [
+        "216",
+        "217",
+        "221"
+      ]
+    }
+  },
+  {
+    "url": "https://4.48kk49.com:1888/Article/ar_content/id/329/tid/22.html",
+    "name": "曾氏原创",
+    "article_id": "329",
+    "keywords": [
+      "杀"
+    ],
+    "count": 10,
+    "region": "top",
+    "anchor": "香港曾氏原创[绝杀10碼]期期精准",
+    "stop_anchor": "上一篇:",
+    "issue_position_window": 10
+  },
+  {
+    "url": "https://4.48kk49.com:1888/Article/ar_content/id/369/tid/24.html",
+    "name": "精选供参料",
+    "article_id": "369",
+    "keywords": [
+      "主杀"
+    ],
+    "count": 10,
+    "region": "top",
+    "anchor": "精选供参料╬◤原创杀10码实力◥已更新",
+    "stop_anchor": "上一篇:",
+    "issue_position_window": 10
+  },
+  {
+    "url": "https://4.48kk49.com:1888/Article/ar_content/id/440/tid/29.html",
+    "name": "彩坛至尊",
+    "article_id": "440",
+    "keywords": [
+      "杀"
+    ],
+    "count": 10,
+    "region": "top",
+    "anchor": "彩坛至尊◤最新杀码◥已更新",
+    "stop_anchor": "上一篇:",
+    "issue_position_window": 10
+  },
+  {
+    "url": "https://4.48kk49.com:1888/Article/ar_content/id/544/tid/35.html",
+    "name": "铁手",
+    "article_id": "544",
+    "keywords": [
+      "铁手杀10码"
+    ],
+    "count": 10,
+    "region": "top",
+    "anchor": "经典实战[杀10码]新铁算盘高手坛",
+    "stop_anchor": "上一篇:",
+    "issue_position_window": 10
+  },
+  {
+    "url": "https://4.48kk49.com:1888/Article/ar_content/id/563/tid/37.html",
+    "name": "百万翁",
+    "article_id": "563",
+    "keywords": [
+      "绝杀10码"
+    ],
+    "count": 10,
+    "region": "top",
+    "anchor": "百万[翁→[独家◇绝杀10码]←已更新",
+    "stop_anchor": "上一篇:",
+    "issue_position_window": 10
+  },
+  {
+    "url": "https://4.48kk49.com:1888/Article/ar_content/id/638/tid/43.html",
+    "name": "刘伯温第二",
+    "article_id": "638",
+    "keywords": [
+      "铁杀(十)码"
+    ],
+    "count": 10,
+    "region": "top",
+    "anchor": "〖刘伯温〗→★[铁杀(十)码]★←已公开",
+    "stop_anchor": "上一篇:",
+    "issue_position_window": 10,
+    "onboarding_exception": {
+      "type": "user_special_addition",
+      "approved": true,
+      "scope": "用户明确要求10个站点加入；只按现有期数判重，225/224任一期可作为基准；仅放宽历史数量",
+      "validated_issue": "225",
+      "valid_history_issues": [
+        "225",
+        "224",
+        "223",
+        "222",
+        "221"
+      ],
+      "missing_history_issues": [
+        "216",
+        "217",
+        "218",
+        "219",
+        "220"
+      ]
+    }
+  },
+  {
+    "url": "https://4.48kk49.com:1888/Article/ar_content/id/747/tid/52.html",
+    "name": "东方心经",
+    "article_id": "747",
+    "keywords": [
+      "心经准杀10码"
+    ],
+    "count": 10,
+    "region": "top",
+    "anchor": "东方心经☆准杀10码已上料",
+    "stop_anchor": "上一篇:",
+    "issue_position_window": 10,
+    "onboarding_exception": {
+      "type": "user_special_addition",
+      "approved": true,
+      "scope": "用户明确要求10个站点加入；只按现有期数判重，225/224任一期可作为基准；仅放宽历史数量",
+      "validated_issue": "225",
+      "valid_history_issues": [
+        "225",
+        "223",
+        "222",
+        "221"
+      ],
+      "missing_history_issues": [
+        "216",
+        "217",
+        "218",
+        "219",
+        "220",
+        "224"
+      ]
+    }
+  },
+  {
+    "url": "https://4.48kk49.com:1888/Article/ar_content/id/767/tid/54.html",
+    "name": "大刀皇",
+    "article_id": "767",
+    "keywords": [
+      "准杀十码"
+    ],
+    "count": 10,
+    "region": "top",
+    "anchor": "大刀皇☆[准杀十码]√",
+    "stop_anchor": "上一篇:",
+    "issue_position_window": 10,
+    "onboarding_exception": {
+      "type": "user_special_addition",
+      "approved": true,
+      "scope": "用户明确要求10个站点加入；只按现有期数判重，225/224任一期可作为基准；仅放宽历史数量",
+      "validated_issue": "225",
+      "valid_history_issues": [
+        "225",
+        "222",
+        "221",
+        "220",
+        "219",
+        "218"
+      ],
+      "missing_history_issues": [
+        "216",
+        "217",
+        "223",
+        "224"
+      ]
+    }
+  },
+  {
+    "url": "https://4.48kk49.com:1888/Article/ar_content/id/925/tid/71.html",
+    "name": "竹影梅花",
+    "article_id": "925",
+    "keywords": [
+      "绝杀10个数"
+    ],
+    "count": 10,
+    "region": "top",
+    "anchor": "竹影梅花",
+    "stop_anchor": "上一篇:",
+    "issue_position_window": 10
+  },
+  {
+    "url": "https://nlafoq9v.dh5565656.xyz/bbs/topic.php?id=1178",
+    "name": "彩界天花",
+    "keywords": [
+      "绝杀十码",
+      "绝杀10码"
+    ],
+    "count": 10,
+    "region": "bottom",
+    "anchor": "彩界天花",
+    "issue_position_window": 10,
+    "encoding": "gb18030",
+    "disabled": true,
+    "archive_tag": "用户指定封存"
+  },
+  {
+    "url": "https://0130190808.880646.xyz/bbs/topic.php?id=20693",
+    "name": "内幕传真",
+    "keywords": [
+      "绝杀十码",
+      "绝杀10码"
+    ],
+    "count": 10,
+    "region": "bottom",
+    "anchor": "内幕传真",
+    "stop_anchor": "下一贴:",
+    "issue_position_window": 10,
+    "onboarding_exception": {
+      "type": "user_special_addition",
+      "approved": true,
+      "scope": "用户明确特例添加；仅放宽正式缓存4个既有站点235期失败导致的判重未完成；候选站现有有效记录未发现连续3期以上重复",
+      "validated_issue": "238",
+      "valid_history_issues": [
+        "230",
+        "231",
+        "232",
+        "233",
+        "234",
+        "235",
+        "236",
+        "237",
+        "238",
+        "239"
+      ],
+      "missing_history_issues": [],
+      "cache_failures_bypassed": [
+        "六合绝杀十码 235期",
+        "六合稳杀十码 235期",
+        "六合稳杀七码 235期",
+        "花仙子 235期"
+      ]
+    },
+    "disabled": true,
+    "archive_tag": "用户指定封存"
+  },
+  {
+    "url": "https://0130190808.345745.xyz/bbs/topic.php?id=20762",
+    "disabled": true,
+    "archive_tag": "用户指定封存",
+    "name": "百年好事",
+    "keywords": [
+      "绝杀十码",
+      "绝杀10码"
+    ],
+    "count": 10,
+    "region": "bottom",
+    "anchor": "百年好事",
+    "stop_anchor": "下一贴:",
+    "issue_position_window": 10,
+    "onboarding_exception": {
+      "type": "history_shortage",
+      "approved": true,
+      "scope": "用户明确特例添加；仅放宽历史数量，不放宽方向、栏目、期数、数量、来源、边界和冲突规则",
+      "validated_issue": "227",
+      "valid_history_issues": [
+        "227",
+        "226",
+        "225",
+        "224",
+        "223",
+        "222",
+        "221",
+        "220",
+        "219"
+      ],
+      "missing_history_issues": [
+        "218"
+      ]
+    }
+  },
+  {
+    "url": "https://i97lk4jb16.333741bbs1.shop/bbs/topic.php?id=2868",
+    "name": "安身立命",
+    "content_class": "content",
+    "keywords": [
+      "绝杀十码",
+      "绝杀10码"
+    ],
+    "count": 10,
+    "region": "bottom",
+    "anchor": "安身立命",
+    "issue_position_window": 10,
+    "disabled": true,
+    "archive_tag": "用户指定封存"
+  },
+  {
+    "url": "https://buzsxio.821n4-hgj04-edkrft.xyz:29455/article/manager/6a7ee5c7ee4739fbe9ea2714?url=bxj",
+    "api_url": "https://buzsxio.821n4-hgj04-edkrft.xyz:29455/api/proxy/manager-articles/6a7ee5c7ee4739fbe9ea2714",
+    "name": "澳门心经",
+    "keywords": [
+      "绝杀十码",
+      "绝杀10码"
+    ],
+    "count": 10,
+    "region": "bottom",
+    "anchor": "澳门心经",
+    "article_identity": "澳门心经",
+    "issue_position_window": 10,
+    "special_parser": "identity_article_bottom_10",
+    "disabled": true,
+    "archive_tag": "用户指定封存"
+  },
+  {
+    "url": "https://18118.73829.com/read.php?tid=480",
+    "name": "高视阔步",
+    "keywords": [
+      "绝杀十码",
+      "绝杀10码"
+    ],
+    "count": 10,
+    "region": "bottom",
+    "anchor": "作者\n高视阔步",
+    "issue_position_window": 10,
+    "onboarding_exception": {
+      "type": "user_special_addition",
+      "approved": true,
+      "scope": "用户明确特例添加；仅放宽正式缓存6个既有失败记录导致的判重未完成；候选站230至239期真实记录未发现连续3期以上重复",
+      "validated_issue": "239",
+      "valid_history_issues": [
+        "230",
+        "231",
+        "232",
+        "233",
+        "234",
+        "235",
+        "236",
+        "237",
+        "238",
+        "239"
+      ],
+      "missing_history_issues": [],
+      "cache_failures_bypassed": [
+        "六合绝杀十码 235期",
+        "六合稳杀十码 235期",
+        "六合稳杀七码 235期",
+        "花仙子 235期",
+        "港澳爆庄 239期",
+        "好料见证 239期"
+      ]
+    }
+  },
+  {
+    "url": "https://z0gcdiww42.669332.shop/bbs/topic.php?id=2877",
+    "name": "重于泰山",
+    "disabled": true,
+    "archive_tag": "用户指定封存",
+    "keywords": [
+      "绝杀十码",
+      "绝杀10码"
+    ],
+    "count": 10,
+    "region": "bottom",
+    "anchor": "作者重于泰山",
+    "issue_position_window": 10,
+    "onboarding_exception": {
+      "type": "user_special_addition",
+      "approved": true,
+      "scope": "用户明确特例添加；仅放宽正式缓存6个既有失败记录导致的判重未完成；候选站230至239期真实记录未发现连续3期以上重复",
+      "validated_issue": "239",
+      "valid_history_issues": [
+        "230",
+        "231",
+        "232",
+        "233",
+        "234",
+        "235",
+        "236",
+        "237",
+        "238",
+        "239"
+      ],
+      "missing_history_issues": [],
+      "cache_failures_bypassed": [
+        "六合绝杀十码 235期",
+        "六合稳杀十码 235期",
+        "六合稳杀七码 235期",
+        "花仙子 235期",
+        "港澳爆庄 239期",
+        "好料见证 239期"
+      ]
+    }
+  },
+  {
+    "url": "https://88888020827.897657.xyz/bbs/topic.php?id=20220",
+    "name": "独家记忆",
+    "keywords": [
+      "绝杀十码",
+      "绝杀10码"
+    ],
+    "count": 10,
+    "region": "bottom",
+    "anchor": "独家记忆",
+    "stop_anchor": "下一贴:",
+    "issue_position_window": 10,
+    "onboarding_exception": {
+      "type": "user_special_addition",
+      "approved": true,
+      "scope": "用户明确特例添加；仅放宽正式缓存6个既有失败记录导致的判重未完成；候选站230至239期真实记录未发现连续3期以上重复",
+      "validated_issue": "239",
+      "valid_history_issues": [
+        "230",
+        "231",
+        "232",
+        "233",
+        "234",
+        "235",
+        "236",
+        "237",
+        "238",
+        "239"
+      ],
+      "missing_history_issues": [],
+      "cache_failures_bypassed": [
+        "六合绝杀十码 235期",
+        "六合稳杀十码 235期",
+        "六合稳杀七码 235期",
+        "花仙子 235期",
+        "港澳爆庄 239期",
+        "好料见证 239期"
+      ]
+    },
+    "disabled": true,
+    "archive_tag": "用户指定封存"
+  },
+  {
+    "url": "https://88888020827.833567.xyz/bbs/topic.php?id=20519",
+    "name": "岁月静好",
+    "disabled": true,
+    "archive_tag": "用户指定封存",
+    "keywords": [
+      "绝杀十码",
+      "绝杀10码"
+    ],
+    "count": 10,
+    "region": "bottom",
+    "anchor": "岁月静好",
+    "stop_anchor": "下一贴:",
+    "issue_position_window": 10,
+    "onboarding_exception": {
+      "type": "user_special_addition",
+      "approved": true,
+      "scope": "用户明确特例添加；仅放宽正式缓存6个既有失败记录导致的判重未完成；候选站230至239期真实记录未发现连续3期以上重复",
+      "validated_issue": "239",
+      "valid_history_issues": [
+        "230",
+        "231",
+        "232",
+        "233",
+        "234",
+        "235",
+        "236",
+        "237",
+        "238",
+        "239"
+      ],
+      "missing_history_issues": [],
+      "cache_failures_bypassed": [
+        "六合绝杀十码 235期",
+        "六合稳杀十码 235期",
+        "六合稳杀七码 235期",
+        "花仙子 235期",
+        "港澳爆庄 239期",
+        "好料见证 239期"
+      ]
+    }
+  },
+  {
+    "url": "https://12388990827.794555.xyz/bbs/topic.php?id=21351",
+    "name": "舒舒服服",
+    "content_class": "content",
+    "keywords": [
+      "绝杀十码",
+      "绝杀10码"
+    ],
+    "count": 10,
+    "region": "bottom",
+    "anchor": "舒舒服服",
+    "issue_position_window": 10,
+    "onboarding_exception": {
+      "type": "user_special_addition",
+      "approved": true,
+      "scope": "用户明确特例添加；仅放宽正式缓存4个既有235期失败导致的判重未完成；候选站230至239期真实记录未发现连续3期以上重复",
+      "validated_issue": "239",
+      "valid_history_issues": [
+        "230",
+        "231",
+        "232",
+        "233",
+        "234",
+        "235",
+        "236",
+        "237",
+        "238",
+        "239"
+      ],
+      "missing_history_issues": [],
+      "cache_failures_bypassed": [
+        "六合绝杀十码 235期",
+        "六合稳杀十码 235期",
+        "六合稳杀七码 235期",
+        "花仙子 235期"
+      ]
+    },
+    "disabled": true,
+    "archive_tag": "用户指定封存"
+  },
+  {
+    "url": "https://12388990827.794555.xyz/bbs/topic.php?id=21013",
+    "name": "云海尘清",
+    "content_class": "content",
+    "keywords": [
+      "绝杀十码",
+      "绝杀10码"
+    ],
+    "count": 10,
+    "region": "bottom",
+    "anchor": "云海尘清",
+    "issue_position_window": 10,
+    "onboarding_exception": {
+      "type": "user_special_addition",
+      "approved": true,
+      "scope": "用户明确特例添加；仅放宽正式缓存4个既有235期失败导致的判重未完成；候选站230至239期真实记录未发现连续3期以上重复",
+      "validated_issue": "239",
+      "valid_history_issues": [
+        "230",
+        "231",
+        "232",
+        "233",
+        "234",
+        "235",
+        "236",
+        "237",
+        "238",
+        "239"
+      ],
+      "missing_history_issues": [],
+      "cache_failures_bypassed": [
+        "六合绝杀十码 235期",
+        "六合稳杀十码 235期",
+        "六合稳杀七码 235期",
+        "花仙子 235期"
+      ]
+    },
+    "disabled": true,
+    "archive_tag": "用户指定封存"
+  },
+  {
+    "url": "https://0130190827.987860.xyz/bbs/topic.php?id=19571",
+    "name": "东方红日",
+    "keywords": [
+      "绝杀十码",
+      "绝杀10码"
+    ],
+    "count": 10,
+    "region": "bottom",
+    "anchor": "东方红日",
+    "stop_anchor": "》》点击注册账号",
+    "issue_position_window": 10,
+    "browser": true,
+    "onboarding_exception": {
+      "type": "user_special_addition",
+      "approved": true,
+      "scope": "用户明确特例添加；仅放宽正式缓存4个既有235期失败导致的判重未完成；候选站230至239期真实记录未发现连续3期以上重复",
+      "validated_issue": "239",
+      "valid_history_issues": [
+        "230",
+        "231",
+        "232",
+        "233",
+        "234",
+        "235",
+        "236",
+        "237",
+        "238",
+        "239"
+      ],
+      "missing_history_issues": [],
+      "cache_failures_bypassed": [
+        "六合绝杀十码 235期",
+        "六合稳杀十码 235期",
+        "六合稳杀七码 235期",
+        "花仙子 235期"
+      ]
+    }
+  },
+  {
+    "url": "https://fbbqydh.nysch-a51ru-wsclir.work:17466/",
+    "name": "生财有道",
+    "keywords": [],
+    "count": 12,
+    "region": "bottom",
+    "anchor": "生财有道®绝杀12码",
+    "stop_anchor": "往下划，不后退，本站资料不收费！",
+    "issue_position_window": 10,
+    "allowed_source_types": [
+      "decoded_script"
+    ]
+  },
+  {
+    "url": "https://guqzklf.1dd96-rjak5-sofyun.work:17466/",
+    "name": "澳彩预测",
+    "keywords": [
+      "绝杀十码"
+    ],
+    "count": 10,
+    "region": "top",
+    "issue_position_region": "top",
+    "anchor": "(绝杀十码)澳彩预测",
+    "stop_anchor": "(绝杀二尾)澳彩预测",
+    "issue_position_window": 10,
+    "allowed_source_types": [
+      "decoded_script"
+    ]
+  },
+  {
+    "url": "https://wmdhoki.6su07-7lpw6-gudkzl.xyz:16677/topic/727504.html",
+    "name": "大获全胜",
+    "keywords": [
+      "绝杀10码"
+    ],
+    "count": 10,
+    "region": "top",
+    "issue_position_region": "top",
+    "anchor": "大获全胜 发表于",
+    "stop_anchor": "上一篇:",
+    "issue_position_window": 10,
+    "allowed_source_types": [
+      "decoded_script"
+    ]
+  },
+  {
+    "url": "https://zexytkv.y0zsf-hpscd-qblttr.work:17466/topic/451818.html",
+    "name": "状元红",
+    "keywords": [
+      "精杀十码",
+      "精杀10码"
+    ],
+    "count": 10,
+    "region": "bottom",
+    "issue_position_region": "top",
+    "anchor": "↓↓≌好料尽在状元红≌↓↓",
+    "stop_anchor": "最快開獎",
+    "issue_position_window": 10,
+    "allowed_source_types": [
+      "decoded_script"
+    ]
+  },
+  {
+    "url": "https://uifesgo.1szw5-owiw3-hyunhb.work:17466/topic/766005.html",
+    "name": "结草衔环",
+    "keywords": [
+      "绝杀七码"
+    ],
+    "count": 7,
+    "region": "top",
+    "issue_position_region": "top",
+    "anchor": "温馨提示:为了提高网速,部分连错期数记录已删除",
+    "stop_anchor": "上一篇:",
+    "issue_position_window": 10,
+    "allowed_source_types": [
+      "decoded_script"
+    ]
+  },
+  {
+    "url": "https://uifesgo.1szw5-owiw3-hyunhb.work:17466/topic/766007.html",
+    "name": "心旷神怡",
+    "keywords": [
+      "绝杀10码"
+    ],
+    "count": 10,
+    "region": "top",
+    "issue_position_region": "bottom",
+    "anchor": "温馨提示:为了提高网速,部分连错期数记录已删除",
+    "stop_anchor": "上一篇:",
+    "issue_position_window": 10,
+    "allowed_source_types": [
+      "decoded_script"
+    ]
+  },
+  {
+    "url": "https://jtrmhar.cwdc3-r5vqn-qzqasa.work:17455/topic/741205.html",
+    "name": "致谢妖怪",
+    "keywords": [
+      "稳杀10码"
+    ],
+    "count": 10,
+    "region": "top",
+    "issue_position_region": "top",
+    "anchor": "致谢妖怪 发表于",
+    "stop_anchor": "上一篇:",
+    "issue_position_window": 10,
+    "allowed_source_types": [
+      "decoded_script"
+    ]
+  },
+  {
+    "url": "https://jtrmhar.cwdc3-r5vqn-qzqasa.work:17455/topic/741204.html",
+    "name": "索引僵尸",
+    "keywords": [
+      "主杀"
+    ],
+    "count": 10,
+    "region": "top",
+    "issue_position_region": "top",
+    "anchor": "索引僵尸 发表于",
+    "stop_anchor": "上一篇:",
+    "issue_position_window": 10,
+    "allowed_source_types": [
+      "decoded_script"
+    ]
+  },
+  {
+    "url": "https://jtrmhar.cwdc3-r5vqn-qzqasa.work:17455/topic/741189.html",
+    "name": "量子永生",
+    "keywords": [
+      "绝杀10码"
+    ],
+    "count": 10,
+    "region": "top",
+    "issue_position_region": "top",
+    "anchor": "量子永生 发表于",
+    "stop_anchor": "上一篇:",
+    "issue_position_window": 10,
+    "allowed_source_types": [
+      "decoded_script"
+    ]
+  },
+  {
+    "url": "https://fkwtjva.d7i0f-wgmak-ivbywl.work:17477/topic/726510.html",
+    "name": "指鹿为马",
+    "keywords": [
+      "绝杀10码"
+    ],
+    "count": 10,
+    "region": "top",
+    "issue_position_region": "top",
+    "anchor": "指鹿为马 发表于",
+    "stop_anchor": "上一篇:",
+    "issue_position_window": 10,
+    "allowed_source_types": [
+      "decoded_script"
+    ]
+  },
+  {
+    "url": "https://yowwqvn.m2le0-0deh3-mriunz.work:17488/",
+    "name": "十二生肖",
+    "keywords": [
+      "绝杀10码"
+    ],
+    "count": 10,
+    "region": "top",
+    "issue_position_region": "top",
+    "anchor": "澳门十二生肖--绝杀10码",
+    "stop_anchor": "澳门十二生肖--绝杀一行",
+    "issue_position_window": 10,
+    "allowed_source_types": [
+      "decoded_script"
+    ]
+  },
+  {
+    "url": "https://yefnnuh.ib0fp-7bi03-skjneo.work:17477/topic/702145.html",
+    "name": "素贞谒塔",
+    "keywords": [
+      "杀10码"
+    ],
+    "count": 10,
+    "region": "top",
+    "issue_position_region": "top",
+    "anchor": "素贞谒塔 发表于",
+    "stop_anchor": "上一篇:",
+    "issue_position_window": 10,
+    "allowed_source_types": [
+      "decoded_script"
+    ]
+  },
+  {
+    "url": "https://niqyf.77cz0-qzyks-ofhmfh.work/topic/206370.html",
+    "name": "此发彼应",
+    "content_class": "topic-content",
+    "keywords": [
+      "杀十码"
+    ],
+    "count": 10,
+    "region": "top",
+    "issue_position_region": "top",
+    "anchor": "作者:此发彼应",
+    "issue_position_window": 10,
+    "allowed_source_types": [
+      "decoded_script"
+    ]
+  },
+  {
+    "url": "https://w4shq9.wc5vp-jujau-joiqes.cyou/topic/300219.html",
+    "name": "易洗鲨鱼",
+    "content_class": "topic-content",
+    "keywords": [
+      "绝杀10码"
+    ],
+    "count": 10,
+    "region": "top",
+    "issue_position_region": "top",
+    "anchor": "作者:易洗鲨鱼",
+    "issue_position_window": 10,
+    "allowed_source_types": [
+      "decoded_script"
+    ]
+  },
+  {
+    "url": "https://etmchyhq.cee5t-w30bf-xgqspr.work:17477/topic/248524.html",
+    "name": "门主立邦",
+    "content_class": "d-content",
+    "keywords": [
+      "绝杀10码"
+    ],
+    "count": 10,
+    "region": "top",
+    "issue_position_region": "top",
+    "anchor": "门主立邦",
+    "issue_position_window": 10,
+    "allowed_source_types": [
+      "decoded_script"
+    ]
+  },
+  {
+    "url": "https://etmchyhq.cee5t-w30bf-xgqspr.work:17477/topic/465953.html",
+    "name": "小时了了",
+    "content_class": "d-content",
+    "keywords": [
+      "主杀"
+    ],
+    "count": 10,
+    "region": "top",
+    "issue_position_region": "top",
+    "anchor": "小时了了",
+    "issue_position_window": 10,
+    "allowed_source_types": [
+      "decoded_script"
+    ]
+  },
+  {
+    "url": "https://mm.737799b.com:1888/",
+    "name": "澳门天空",
+    "keywords": [
+      "决杀十码"
+    ],
+    "count": 10,
+    "region": "top",
+    "issue_position_region": "top",
+    "anchor": "★澳门天空★决杀十码",
+    "stop_anchor": "★澳门天空★平特三中二",
+    "issue_position_window": 10
+  },
+  {
+    "url": "https://owvanaxi.2151m-ot1k5-vsfxmm.work:17477/topic/465155.html",
+    "name": "百里挑一",
+    "content_class": "d-content",
+    "keywords": [
+      "绝杀10码"
+    ],
+    "count": 10,
+    "region": "top",
+    "issue_position_region": "top",
+    "anchor": "百里挑一",
+    "issue_position_window": 10,
+    "allowed_source_types": [
+      "decoded_script"
+    ]
+  },
+  {
+    "url": "https://tlwggkde.dp86b-grpqw-uiiazp.work:17466/topic/247739.html",
+    "name": "聚宝十二",
+    "content_class": "d-content",
+    "keywords": [
+      "绝杀12码"
+    ],
+    "count": 12,
+    "region": "top",
+    "issue_position_region": "top",
+    "anchor": "高手猛料",
+    "issue_position_window": 10,
+    "allowed_source_types": [
+      "decoded_script"
+    ]
+  },
+  {
+    "url": "https://tlwggkde.dp86b-grpqw-uiiazp.work:17466/topic/247755.html",
+    "name": "聚宝十",
+    "content_class": "d-content",
+    "keywords": [
+      "绝杀十码"
+    ],
+    "count": 10,
+    "region": "top",
+    "issue_position_region": "top",
+    "anchor": "高手猛料",
+    "issue_position_window": 10,
+    "allowed_source_types": [
+      "decoded_script"
+    ]
+  },
+  {
+    "url": "https://hdwgkhut.o3oor-kcr2c-bmrcxq.work:17488/topic/280560.html",
+    "name": "人在江湖",
+    "content_class": "content",
+    "keywords": [
+      "绝杀10码"
+    ],
+    "count": 10,
+    "region": "top",
+    "issue_position_region": "top",
+    "anchor": "人在江湖 发表于",
+    "issue_position_window": 10,
+    "prefer_pending_candidate": true,
+    "allowed_source_types": [
+      "decoded_script"
+    ]
+  },
+  {
+    "url": "https://yxxeuvic.s7zfu-f3ymk-shmtnv.cyou:17477/topic/479503.html",
+    "name": "人非土木",
+    "content_class": "topic-content",
+    "keywords": [
+      "杀"
+    ],
+    "count": 10,
+    "region": "top",
+    "issue_position_region": "top",
+    "anchor": "作者:人非土木",
+    "issue_position_window": 10,
+    "allowed_source_types": [
+      "decoded_script"
+    ]
+  },
+  {
+    "url": "https://gboqrz.9nd7w-317gv-gsktxy.cyou/topic/192047.html",
+    "name": "片羽吉光",
+    "content_class": "topic-content",
+    "keywords": [
+      "杀十码"
+    ],
+    "count": 10,
+    "region": "top",
+    "issue_position_region": "top",
+    "anchor": "作者:片羽吉光",
+    "issue_position_window": 10,
+    "allowed_source_types": [
+      "decoded_script"
+    ]
+  },
+  {
+    "url": "https://88.47578a.com:1888/",
+    "name": "百万秘籍",
+    "keywords": [
+      "绝杀十码",
+      "绝杀10码"
+    ],
+    "count": 10,
+    "region": "top",
+    "anchor": "百万秘籍【绝杀十码】",
+    "issue_position_window": 10
+  },
+  {
+    "url": "https://cc.373795b.com:1888/",
+    "name": "新澳彩讯",
+    "keywords": [
+      "绝杀十码",
+      "绝杀10码"
+    ],
+    "count": 10,
+    "region": "top",
+    "anchor": "新澳彩讯【绝杀十码】",
+    "issue_position_window": 10
+  },
+  {
+    "url": "https://62139c.com/bbs/byg.js",
+    "name": "码友系列",
+    "keywords": [
+      "期杀"
+    ],
+    "count": 7,
+    "region": "bottom",
+    "anchor": "码友心云",
+    "stop_anchor": "码友七郎",
+    "issue_position_window": 3
+  },
+  {
+    "url": "https://www.930600.com/bbs/read.php?tid=1795385",
+    "name": "冰哥哥",
+    "keywords": [
+      "杀十码"
+    ],
+    "count": 10,
+    "region": "bottom",
+    "anchor": "冰哥哥",
+    "issue_position_window": 10,
+    "disabled": true,
+    "archive_tag": "用户指定封存"
+  },
+  {
+    "url": "http://www.2018512.com/read.php?tid=15&fpage=1&page=3",
+    "name": "依然公主",
+    "keywords": [
+      "依然公主尽位杀码",
+      "依然公主首位杀码"
+    ],
+    "count": 6,
+    "region": "bottom",
+    "anchor": "依然公主尽位杀码",
+    "part_anchors": [
+      "依然公主尽位杀码",
+      "依然公主首位杀码"
+    ],
+    "issue_position_window": 10,
+    "special_parser": "yiran_gongzhu_bottom_6",
+    "onboarding_exception": {
+      "type": "user_special_addition",
+      "approved": true,
+      "scope": "用户明确特例添加；仅放宽历史数量，不放宽两个区块合并、bottom、期数、数量、来源或候选冲突校验",
+      "validated_issue": "266",
+      "valid_history_issues": [
+        "262",
+        "263",
+        "264",
+        "265",
+        "266"
+      ],
+      "missing_history_issues": [
+        "257",
+        "258",
+        "259",
+        "260",
+        "261"
+      ]
+    }
+  },
+  {
+    "url": "https://85555.xyz/article/show.aspx?id=32",
+    "name": "屠龙宝刀",
+    "keywords": [
+      "杀10码"
+    ],
+    "count": 10,
+    "region": "top",
+    "anchor": "屠龙宝刀 杀10码",
+    "stop_anchor": "如果觉得本站资料准确",
+    "issue_position_window": 10
+  },
+  {
+    "url": "https://bbs.123408.cc/gsbbs/20.html",
+    "name": "来之不易",
+    "keywords": [
+      "稳杀7码"
+    ],
+    "count": 7,
+    "region": "bottom",
+    "anchor": "来之不易[稳杀7码]",
+    "issue_position_window": 10,
+    "disabled": true,
+    "archive_tag": "用户指定封存"
+  },
+  {
+    "url": "https://zhqithm.kyla2-b68e7-uxztyb.xyz:16677/topic/485816.html",
+    "name": "面不改色",
+    "allowed_source_types": [
+      "decoded_script"
+    ],
+    "keywords": [
+      "绝杀八码"
+    ],
+    "count": 8,
+    "region": "bottom",
+    "anchor": "面不改色 发表于",
+    "stop_anchor": "七星娱乐",
+    "issue_position_window": 10
+  },
+  {
+    "url": "https://qaocupm.7yg5i-c5pzn-bgiocd.work:17488/topic/266121.html",
+    "name": "草菅人命",
+    "allowed_source_types": [
+      "decoded_script"
+    ],
+    "keywords": [
+      "稳杀十码"
+    ],
+    "count": 10,
+    "region": "top",
+    "anchor": "草菅人命 发表于",
+    "issue_position_window": 10
+  },
+  {
+    "url": "https://afjtwti.y0no9-bvyf4-gdzefg.cyou:17455/topic/217808.html",
+    "name": "价增一顾",
+    "allowed_source_types": [
+      "decoded_script"
+    ],
+    "keywords": [
+      "稳杀10码"
+    ],
+    "count": 10,
+    "region": "top",
+    "anchor": "作者:价增一顾",
+    "issue_position_window": 10
+  },
+  {
+    "url": "https://139266.com/",
+    "name": "澳彩之家",
+    "allowed_source_types": [
+      "external_script"
+    ],
+    "source_url_pattern": "/sha8m[.]aspx",
+    "keywords": [
+      "绝杀八码"
+    ],
+    "count": 8,
+    "region": "top",
+    "anchor": "澳彩之家『绝杀八码』",
+    "issue_position_window": 10
+  },
+  {
+    "url": "https://dh81163.2cv5a08j69.cyou/Wld1DD6fRn.html",
+    "name": "大包大揽",
+    "packed_script_url": "https://api.bdmijg.com/js-111-10097",
+    "keywords": [
+      "稳杀10码"
+    ],
+    "count": 10,
+    "region": "bottom",
+    "anchor": "作者:大包大揽楼主",
+    "stop_anchor": "帖子页尾部",
+    "issue_position_window": 10
+  },
+  {
+    "url": "https://zurzgbji.y5fbz-z5q1f-suyalq.work:17477/topic/459932.html",
+    "name": "班林隔音",
+    "keywords": [
+      "绝杀12码"
+    ],
+    "count": 12,
+    "region": "top",
+    "anchor": "班林隔音[绝杀12码]",
+    "browser": true,
+    "issue_position_window": 10
+  },
+  {
+    "url": "https://hczifkwk.lpjm7-6pzex-mjqezb.work:17477/",
+    "name": "湖心小筑",
+    "allowed_source_types": [
+      "decoded_script"
+    ],
+    "keywords": [
+      "绝杀10码",
+      "绝杀十码"
+    ],
+    "count": 10,
+    "region": "top",
+    "anchor": "湖心小筑",
+    "special_parser": "huxin_xiaozhu_stable_10",
+    "issue_position_window": 5
+  },
+  {
+    "url": "https://lurzckzz.y0i3v-xijtf-gpcrda.work:17455/topic/272201.html",
+    "name": "鸡飞狗跳",
+    "keywords": [
+      "绝杀10码"
+    ],
+    "count": 10,
+    "region": "top",
+    "anchor": "鸡飞狗跳",
+    "browser": true,
+    "issue_position_window": 10
+  },
+  {
+    "url": "https://lurzckzz.y0i3v-xijtf-gpcrda.work:17455/topic/272186.html",
+    "name": "微不足道",
+    "keywords": [
+      "绝杀10码"
+    ],
+    "count": 10,
+    "region": "top",
+    "anchor": "微不足道",
+    "browser": true,
+    "issue_position_window": 10
+  },
+  {
+    "url": "https://dd.838797b.com:1888/art_zhuanqu/128.html",
+    "name": "海阔天空",
+    "keywords": [
+      "绝杀10码"
+    ],
+    "count": 10,
+    "region": "top",
+    "anchor": "海阔天空",
+    "issue_position_window": 11
+  },
+  {
+    "url": "https://amvkeojg.ilnvs-bqf6s-aowepc.work:17466/topic/559103.html",
+    "name": "千古奇逢",
+    "allowed_source_types": [
+      "decoded_script"
+    ],
+    "keywords": [
+      "准杀6码"
+    ],
+    "count": 6,
+    "region": "top",
+    "issue_position_region": "top",
+    "anchor": "千古奇逢",
+    "issue_position_window": 10
+  },
+  {
+    "url": "https://klnizc.u0jd0-wv6xw-vkufqf.xyz:16677/topic/326575.html",
+    "name": "弃暗投明",
+    "allowed_source_types": [
+      "decoded_script"
+    ],
+    "keywords": [
+      "绝杀六码"
+    ],
+    "count": 6,
+    "region": "top",
+    "issue_position_region": "bottom",
+    "anchor": "弃暗投明",
+    "issue_position_window": 10,
+    "onboarding_exception": {
+      "type": "history_shortage",
+      "approved": true,
+      "scope": "用户 2026-10-16 点名投喂并在 ask_user_question(onboard5) 选定范围 A：接入 4 站、跳过同源重复的饮马长江；该站换版后仅 280 期起可解析（历史 9 期）；仅放宽历史数量，不放宽栏目、方向、期数、数量、来源或冲突校验",
+      "validated_issue": "288",
+      "valid_history_issues": [
+        "280",
+        "281",
+        "282",
+        "283",
+        "284",
+        "285",
+        "286",
+        "287",
+        "288"
+      ],
+      "missing_history_issues": [
+        "279"
+      ]
+    }
+  },
+  {
+    "url": "https://hhvyruad.fuxln-eqr2o-oodrvn.cyou:17477/topic/453953.html",
+    "name": "火红太阳",
+    "allowed_source_types": [
+      "decoded_script"
+    ],
+    "keywords": [
+      "稳杀7码"
+    ],
+    "count": 7,
+    "region": "top",
+    "issue_position_region": "top",
+    "anchor": "火红太阳",
+    "issue_position_window": 10,
+    "onboarding_exception": {
+      "type": "history_shortage",
+      "approved": true,
+      "scope": "用户 2026-10-16 点名投喂并在 ask_user_question(onboard5) 选定范围 A：接入 4 站、跳过同源重复的饮马长江；该站换版后仅 280 期起可解析（历史 9 期）；仅放宽历史数量，不放宽栏目、方向、期数、数量、来源或冲突校验",
+      "validated_issue": "288",
+      "valid_history_issues": [
+        "280",
+        "281",
+        "282",
+        "283",
+        "284",
+        "285",
+        "286",
+        "287",
+        "288"
+      ],
+      "missing_history_issues": [
+        "279"
+      ]
+    }
+  },
+  {
+    "url": "https://hhvyruad.fuxln-eqr2o-oodrvn.cyou:17477/topic/479501.html",
+    "name": "深中隐厚",
+    "allowed_source_types": [
+      "decoded_script"
+    ],
+    "keywords": [
+      "稳杀7码"
+    ],
+    "count": 7,
+    "region": "top",
+    "issue_position_region": "top",
+    "anchor": "深中隐厚",
+    "issue_position_window": 10,
+    "onboarding_exception": {
+      "type": "history_shortage",
+      "approved": true,
+      "scope": "用户 2026-10-16 点名投喂并在 ask_user_question(onboard5) 选定范围 A：接入 4 站、跳过同源重复的饮马长江；该站换版后仅 280 期起可解析（历史 9 期）；仅放宽历史数量，不放宽栏目、方向、期数、数量、来源或冲突校验",
+      "validated_issue": "288",
+      "valid_history_issues": [
+        "280",
+        "281",
+        "282",
+        "283",
+        "284",
+        "285",
+        "286",
+        "287",
+        "288"
+      ],
+      "missing_history_issues": [
+        "279"
+      ]
+    }
+  },
+  {
+    "url": "https://tnvrmdca.hc0ac-ky358-dykmsc.work:17488/topic/813089.html",
+    "name": "大家闺秀",
+    "keywords": [
+      "敌杀10码"
+    ],
+    "count": 10,
+    "region": "top",
+    "issue_position_region": "top",
+    "anchor": "温馨提示:为了提高网速,部分连错期数记录已删除",
+    "stop_anchor": "上一篇:",
+    "issue_position_window": 10,
+    "allowed_source_types": [
+      "decoded_script"
+    ]
+  },
+  {
+    "url": "https://afpmik.n1zni-nmqwh-hdvoya.work:17477/topic/448285.html",
+    "name": "美中不足",
+    "allowed_source_types": [
+      "decoded_script"
+    ],
+    "keywords": [
+      "杀6码"
+    ],
+    "count": 6,
+    "region": "bottom",
+    "issue_position_region": "bottom",
+    "anchor": "美中不足",
+    "issue_position_window": 10
+  },
+  {
+    "url": "https://xuknerw.fu5qv-a7f7o-nxmebt.work:16633/topic/554611.html",
+    "name": "遇到云蒸",
+    "allowed_source_types": [
+      "decoded_script"
+    ],
+    "keywords": [
+      "绝杀10码"
+    ],
+    "count": 10,
+    "region": "top",
+    "issue_position_region": "top",
+    "anchor": "遇到云蒸",
+    "issue_position_window": 10
+  },
+  {
+    "url": "https://lrwvjj.3v95n-3h9g2-xdvasi.work:17488/topic/281998.html",
+    "name": "龙飞凤舞",
+    "allowed_source_types": [
+      "decoded_script"
+    ],
+    "keywords": [
+      "稳杀7码"
+    ],
+    "count": 7,
+    "region": "top",
+    "issue_position_region": "top",
+    "anchor": "龙飞凤舞",
+    "issue_position_window": 10
+  },
+  {
+    "url": "https://myfmox.tzlb2-t66ru-zcgqde.work:17455/topic/312227.html",
+    "name": "勇往直前",
+    "allowed_source_types": [
+      "decoded_script"
+    ],
+    "keywords": [
+      "稳杀7码"
+    ],
+    "count": 7,
+    "region": "bottom",
+    "issue_position_region": "bottom",
+    "anchor": "勇往直前",
+    "issue_position_window": 10
+  },
+  {
+    "url": "https://xuknerw.fu5qv-a7f7o-nxmebt.work:16633/topic/466128.html",
+    "name": "如意算盘",
+    "allowed_source_types": [
+      "decoded_script"
+    ],
+    "keywords": [
+      "绝杀8码"
+    ],
+    "count": 8,
+    "region": "bottom",
+    "issue_position_region": "bottom",
+    "anchor": "如意算盘",
+    "issue_position_window": 10
+  },
+  {
+    "url": "https://dtnjpph.1p0w8-q5dks-oxbahg.xyz:16677/topic/450425.html",
+    "name": "漫山遍野",
+    "allowed_source_types": [
+      "decoded_script"
+    ],
+    "keywords": [
+      "灭黑庄6码"
+    ],
+    "count": 6,
+    "region": "top",
+    "issue_position_region": "top",
+    "anchor": "漫山遍野",
+    "issue_position_window": 10
+  },
+  {
+    "url": "https://kyrsgg.j3th6-yprjr-gqnzeo.work:17488/topic/795594.html",
+    "name": "玉润珠圆",
+    "allowed_source_types": [
+      "decoded_script"
+    ],
+    "keywords": [],
+    "count": 8,
+    "region": "top",
+    "issue_position_region": "top",
+    "anchor": "玉润珠圆",
+    "issue_position_window": 10
+  },
+  {
+    "url": "https://tivxkhqp.7u491-b5lgx-myqumf.work:17455/topic/759897.html",
+    "name": "不骄不躁",
+    "allowed_source_types": [
+      "decoded_script"
+    ],
+    "keywords": [
+      "传真"
+    ],
+    "count": 10,
+    "region": "top",
+    "issue_position_region": "top",
+    "anchor": "不骄不躁",
+    "issue_position_window": 10
+  },
+  {
+    "url": "https://ghegvfr.5n8r1-kurkd-esielp.cyou:17455/topic/800042.html",
+    "name": "机不可失",
+    "allowed_source_types": [
+      "decoded_script"
+    ],
+    "keywords": [
+      "无错绝杀⑧码",
+      "无错绝杀8码",
+      "杀⑧码"
+    ],
+    "count": 8,
+    "region": "top",
+    "issue_position_region": "top",
+    "anchor": "机不可失",
+    "issue_position_window": 10
+  },
+  {
+    "url": "https://ghegvfr.5n8r1-kurkd-esielp.cyou:17455/",
+    "name": "四舅稳扎稳打",
+    "allowed_source_types": [
+      "browser_decoded"
+    ],
+    "keywords": [
+      "不买十码"
+    ],
+    "count": 10,
+    "region": "top",
+    "issue_position_region": "top",
+    "anchor": "无敌杀码料",
+    "issue_position_window": 10,
+    "stop_anchor": "三肖规律",
+    "browser": true
+  },
+  {
+    "url": "https://hfkbpgdp.h6mga-ozpm9-ylsnke.work:17455/topic/442471.html",
+    "name": "言墨寒谦",
+    "keywords": [
+      "稳杀十码"
+    ],
+    "count": 10,
+    "region": "top",
+    "issue_position_region": "top",
+    "anchor": "言墨寒谦",
+    "issue_position_window": 10,
+    "browser": true,
+    "browser_wait_until": "load"
+  },
+  {
+    "url": "https://hfkbpgdp.h6mga-ozpm9-ylsnke.work:17455/topic/507699.html",
+    "name": "江左梅郎",
+    "keywords": [
+      "铁杀十码"
+    ],
+    "count": 10,
+    "region": "bottom",
+    "issue_position_region": "bottom",
+    "anchor": "铁杀十码",
+    "stop_anchor": "上一篇:",
+    "issue_position_window": 10,
+    "browser": true,
+    "browser_wait_until": "load"
+  },
+  {
+    "url": "https://ruhkmxvz.kz977-g7qf5-zkowmg.work:17455/topic/349969.html",
+    "name": "剑镇山河",
+    "keywords": [
+      "杀特十码"
+    ],
+    "count": 10,
+    "region": "top",
+    "anchor": "剑镇山河",
+    "stop_anchor": "上一篇：",
+    "browser": true,
+    "browser_wait_until": "load",
+    "issue_position_window": 5
   }
 ]
