@@ -248,6 +248,12 @@
       "url": "https://i97lk4jb16.333741bbs1.shop/bbs/topic.php?id=2868",
       "status": "archived",
       "reason": "用户指定封存：源帖已下架，页面显示「此帖子ID已被下架」，正文与锚点均不存在，306期起无法抓取"
+    },
+    {
+      "name": "稳准好料",
+      "url": "https://hcsuuoy.nimo7-9bgj4-fmspxt.xyz:29466/article/manager/6a314408f4129ac0e1595573?url=cww",
+      "status": "archived",
+      "reason": "用户指定封存：站点已撤稿，文章页面与文章接口均返回 404，站点首页作者列表（52 位）中已无「稳准好料」，文章 ID 6a314408f4129ac0e1595573 不在 64 个文章 ID 集合内，309期起无法抓取"
     }
   ]
 }

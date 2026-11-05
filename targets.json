@@ -2223,7 +2223,9 @@
     "count": 10,
     "region": "bottom",
     "anchor": "稳准好料",
-    "issue_position_window": 10
+    "issue_position_window": 10,
+    "disabled": true,
+    "archive_tag": "用户指定封存"
   },
   {
     "url": "https://hcsuuoy.nimo7-9bgj4-fmspxt.xyz:29466/article/manager/6a4f2a8f4cd760c3a021ea24?url=cww",
