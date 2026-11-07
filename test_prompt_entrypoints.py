@@ -19,10 +19,7 @@ def test_single_prompt_rejects_multiple_issues():
     assert "--no-cache-update" not in prompt.crawler_command_for_input("187")
     with pytest.raises(ValueError, match='单期'):
         prompt.crawler_command_for_input("187 188")
-    assert "已由 crawler.py 同步" in prompt.cache_completion_message(["187"], "187")
-    assert "多期抓取不更新缓存" in prompt.cache_completion_message(
-        ["187", "188"], "188"
-    )
+    assert "已由 crawler.py 同步" in prompt.cache_completion_message("187")
 
 
 def test_duplicate_bat_uses_each_sites_live_region_instead_of_global_latest():

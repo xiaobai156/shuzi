@@ -100,20 +100,20 @@ def test_debug_repository_writes_single_atomic_evidence_document(tmp_path):
     assert "reason: 解析失败" in path.read_text(encoding="utf-8")
 
 
-def test_output_repository_keeps_single_and_multi_issue_filenames(tmp_path):
+def test_output_repository_keeps_one_issue_per_file(tmp_path):
     single = output_files_for_issues(tmp_path, ["211"], normalize_issue, "success.txt", "failed.txt")
-    multiple = output_files_for_issues(tmp_path, ["210", "211"], normalize_issue, "success.txt", "failed.txt")
 
     assert single == (
         str(tmp_path / "211期-杀数字-成功.txt"),
         str(tmp_path / "211期-杀数字-失败.txt"),
         str(tmp_path / "211期报告.txt"),
     )
-    assert multiple == (
-        str(tmp_path / "210-211期-杀数字-成功.txt"),
-        str(tmp_path / "210-211期-杀数字-失败.txt"),
-        str(tmp_path / "210-211期报告.txt"),
-    )
+
+    # 一期一文件是硬约束：多期必须由上层逐期调用，这里直接拒绝。
+    with pytest.raises(ValueError, match="一次只能对应一个期数"):
+        output_files_for_issues(
+            tmp_path, ["210", "211"], normalize_issue, "success.txt", "failed.txt"
+        )
 
 
 def test_remove_stale_file_does_not_hide_delete_failure(tmp_path, monkeypatch):

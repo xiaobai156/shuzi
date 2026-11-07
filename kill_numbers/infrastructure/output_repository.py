@@ -20,8 +20,14 @@ def output_files_for_issues(
             str(directory / failed_file),
             str(directory / "当期报告.txt"),
         )
+    if len(normalized) > 1:
+        # 一期一文件是硬约束：成功TXT的行格式不含期数，多期写同一文件会让
+        # 行无法区分期数。多期必须由上层逐期调用，而不是在这里合并。
+        raise ValueError(
+            f"一次只能对应一个期数，收到 {len(normalized)} 个：{', '.join(normalized)}"
+        )
 
-    prefix = normalized[0] if len(normalized) == 1 else f"{normalized[0]}-{normalized[-1]}"
+    prefix = normalized[0]
     return (
         str(directory / f"{prefix}期-杀数字-成功.txt"),
         str(directory / f"{prefix}期-杀数字-失败.txt"),

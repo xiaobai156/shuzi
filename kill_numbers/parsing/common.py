@@ -594,6 +594,37 @@ def issue_position_window_starts(
         selected = ordered[:window]
     return {start for _group, _segment, start in selected}
 
+def stale_window_fallback(
+    text: str,
+    issue: str,
+    outside_window: list[tuple[list[str], str, int]],
+    allowed_window_starts: set[int] | None,
+) -> list[tuple[list[str], str, int]]:
+    """窗口里只有比目标期更旧的行时，说明页面顶部那块“最新”本身就是旧的。
+
+    站点常在正文前面先放一段历史回顾块（如 310→305），真正的最新行（312、311）
+    在后面；按文档顺序取“头 N 条”就会把目标期排除。只有当窗口内所有期号都比
+    目标期旧、且窗口内一个候选都没有时，才改用窗口外的同块候选；正常的
+    newest→oldest 页面窗口内一定有比目标更新的行，不受影响。
+    """
+    if not outside_window or not allowed_window_starts:
+        return []
+    requested_text = normalize_issue(issue)
+    if not requested_text.isdigit():
+        return []
+    requested = int(requested_text)
+    window_values = set()
+    for match in all_issue_segment_matches(text):
+        if match.start() not in allowed_window_starts:
+            continue
+        value = normalize_issue(match.group(1))
+        if value.isdigit():
+            window_values.add(int(value))
+    if window_values and all(value < requested for value in window_values):
+        return outside_window
+    return []
+
+
 def extract_issue_numbers(
     text: str,
     issues: list[str],
@@ -631,9 +662,9 @@ def extract_issue_numbers(
             match.start() >= seam_floor for match in matches
         ):
             matches = []
+        windowed: list[tuple[list[str], str, int]] = []
+        outside_window: list[tuple[list[str], str, int]] = []
         for match in matches:
-            if allowed_window_starts is not None and match.start() not in allowed_window_starts:
-                continue
             if allowed_row_starts is not None and scope_offset + match.start() not in allowed_row_starts:
                 continue
             segment = match.group(0)
@@ -644,11 +675,22 @@ def extract_issue_numbers(
             label_end = match.start("body") - match.start()
             owned = "\n".join(segment_number_blocks(segment, label_end, issue))
             groups = number_groups_for_count(owned, expected_count) if owned.strip() else []
+            bucket = (
+                outside_window
+                if (
+                    allowed_window_starts is not None
+                    and match.start() not in allowed_window_starts
+                )
+                else windowed
+            )
             for group in groups:
                 if expected_count and len(group) != expected_count:
                     # 数量不符直接拒绝，不能从其他组或其他位置补数字来凑够 count。
                     continue
-                candidates.append((group, segment, scope_offset + match.start()))
+                bucket.append((group, segment, scope_offset + match.start()))
+        candidates = windowed or stale_window_fallback(
+            text, issue, outside_window, allowed_window_starts
+        )
         if candidates:
             strict_region = needs_strict_region_window(candidates)
             normalized_region = normalize_region(region)

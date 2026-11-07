@@ -27,9 +27,7 @@ def crawler_command_for_input(raw_issues: str) -> list[str]:
     return cmd
 
 
-def cache_completion_message(crawl_issues: list[str], latest_issue: str) -> str:
-    if len(crawl_issues) > 1:
-        return f"{CACHE_FILE}：多期抓取不更新缓存。"
+def cache_completion_message(latest_issue: str) -> str:
     return f"{CACHE_FILE} 已由 crawler.py 同步：最新期 {latest_issue}，保留近10期。"
 
 
@@ -75,7 +73,7 @@ def main() -> int:
         return 1
 
     print()
-    print(cache_completion_message(crawl_issues, latest_issue))
+    print(cache_completion_message(latest_issue))
 
     print()
     print("运行结束，请查看 N期-杀数字-成功.txt；如有失败，再查看 N期-杀数字-失败.txt")

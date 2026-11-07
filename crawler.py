@@ -180,7 +180,7 @@ from kill_numbers.infrastructure.output_repository import (
 from kill_numbers.infrastructure.target_repository import read_target_data
 
 
-# 默认期数：你也可以运行时用 --issues 119 或 --issues 119,120 指定。
+# 默认期数：运行时用 --issues 119 指定，一次只允许一个期数（多期走多期入口）。
 DEFAULT_ISSUES = "128"
 DEFAULT_WORKERS = 8
 DEFAULT_RETRY_PASSES = 0
@@ -433,6 +433,14 @@ def load_targets(path: Path = TARGETS_FILE) -> list[dict]:
                     f"targets.json 第 {index} 条 identity_article_bottom_10 必须配置 "
                     "bottom、count=10、接口或admin文章入口、相同的 "
                     "anchor/article_identity"
+                )
+            row_anchor = item.get("row_anchor")
+            if row_anchor is not None and (
+                not isinstance(row_anchor, str) or not row_anchor.strip()
+            ):
+                raise ValueError(
+                    f"targets.json 第 {index} 条 identity_article_bottom_10 的 "
+                    "row_anchor 必须是非空字符串"
                 )
         if special_parser == "identity_article_top_10":
             if (
@@ -1480,6 +1488,8 @@ def blocked_by_local_socket_policy(failures: list[CrawlFailure]) -> bool:
 
 def failure_category(failure: CrawlFailure) -> str:
     reason = failure.reason
+    if "成功TXT已存在同站不同号码" in reason:
+        return "输出冲突"
     if "手动风险拦截" in reason:
         return "手动风险拦截"
     if "专属解析未命中" in reason:
@@ -1668,11 +1678,14 @@ def write_outputs(
     report_file: str,
     stats: RunStats,
     skip_backup: bool = False,
-) -> None:
+) -> list[CrawlFailure]:
+    """写出成功/失败 TXT，并返回因输出冲突被跳过的站点。
+
+    同名不同号码只停该站写入，不再用异常中断整轮：异常会让同一轮其他
+    站点已经抓到的结果一起丢在内存里，而规范要求的只是“停止该站写入”。
+    """
     if not skip_backup:
         backup_existing_outputs(result_file)
-    if failures and not skip_backup:
-        backup_existing_outputs(failed_file)
 
     result_path = Path(result_file)
     result_lines = (
@@ -1680,20 +1693,43 @@ def write_outputs(
         if result_path.exists()
         else []
     )
+    conflicts: list[CrawlFailure] = []
     for item in dedupe_results(results):
         line = f"{','.join(item.numbers)} {item.name}"
         existing = [value for value in result_lines if value.endswith(f" {item.name}")]
         if existing and line not in existing:
-            raise ValueError(f"成功TXT已存在同站不同号码：{item.name} {item.issue}期")
+            previous = existing[0][: -len(item.name)].rstrip()
+            conflicts.append(CrawlFailure(
+                url=item.url,
+                name=item.name,
+                reason=(
+                    f"成功TXT已存在同站不同号码，已停止该站写入："
+                    f"{item.name} {item.issue}期 本轮 {','.join(item.numbers)}"
+                    f"；文件已有 {previous}"
+                    f"；请人工确认后删除成功TXT中的旧行再重抓"
+                ),
+            ))
+            continue
         if line not in result_lines:
             result_lines.append(line)
+
+    reported_failures = [*failures, *conflicts]
+    if reported_failures and not skip_backup:
+        backup_existing_outputs(failed_file)
+    # 先写失败记录再写成功记录：冲突站不会出现在成功里，失败记录必须先落地，
+    # 否则成功写成功、失败写失败时它就从两边一起消失。
+    if reported_failures:
+        failure_lines = [failure_output_line(item) for item in reported_failures]
+        atomic_write_text(failed_file, "\n".join(failure_lines) + "\n")
+
     atomic_write_text(result_file, "\n".join(result_lines) + ("\n" if result_lines else ""))
 
-    if failures:
-        failure_lines = [failure_output_line(item) for item in failures]
-        atomic_write_text(failed_file, "\n".join(failure_lines) + "\n")
-    else:
+    # 删除旧失败文件必须放在成功写之后：反过来一旦成功写失败（Windows 上
+    # 文件被占用时 os.replace 会抛 PermissionError），失败记录已被删、
+    # 成功也没写，这轮结果就两边一起消失。
+    if not reported_failures:
         remove_stale_failure_file(failed_file, skip_backup=skip_backup)
+    return conflicts
 
 def remove_stale_failure_file(failed_file: str, skip_backup: bool = False) -> None:
     path = Path(failed_file)
@@ -1746,7 +1782,7 @@ def _main_unlocked() -> int:
     parser.add_argument(
         "--issues",
         default=DEFAULT_ISSUES,
-        help="指定期数，多个用逗号分隔，例如：119 或 119,120",
+        help="指定期数，只允许一个，例如：119；多期请用多期入口",
     )
     parser.add_argument(
         "--workers",
@@ -1771,6 +1807,14 @@ def _main_unlocked() -> int:
     issues = parse_issues(args.issues)
     if not issues:
         print("请指定期数，例如：python crawler.py --issues 119")
+        return 2
+    if len(issues) > 1:
+        # 成功TXT的行格式是「号码 站点」，不含期数；多期写同一文件会让行无法
+        # 区分期数，判重也会把这些行当成坏行。多期必须走逐期入口。
+        print(
+            "crawler.py 一次只允许一个期数；多期请用「爬虫-每天杀数字-多期.bat」，"
+            "它会逐期运行并分别写入各自期数的 TXT。"
+        )
         return 2
     if args.run_result and (len(issues) != 1 or not args.no_cache_update):
         parser.error("本轮结果凭据仅供逐期无缓存入口使用")
@@ -1844,7 +1888,7 @@ def _main_unlocked() -> int:
         retry_passes_used=retry_passes_used,
         workers=max_workers,
     )
-    write_outputs(
+    conflict_failures = write_outputs(
         results,
         failures,
         result_file,
@@ -1853,6 +1897,16 @@ def _main_unlocked() -> int:
         stats,
         skip_backup=skip_output_backup,
     )
+    if conflict_failures:
+        conflict_keys = {(item.name, item.url) for item in conflict_failures}
+        results = [
+            item for item in results if (item.name, item.url) not in conflict_keys
+        ]
+        failures = [*failures, *conflict_failures]
+        print(
+            f"\n输出冲突：{len(conflict_failures)} 个站点因成功TXT已有不同号码"
+            f"停止写入，已记入失败TXT，其余站点照常写入。"
+        )
     if args.run_result:
         import hashlib
         from kill_numbers.infrastructure.cache_format import target_contract_fingerprint
@@ -1875,15 +1929,10 @@ def _main_unlocked() -> int:
         })
     cache_error = None
     cache_updated = False
-    if args.no_cache_update or len(issues) > 1:
-        reason = "按参数要求" if args.no_cache_update else "指定了多个期数"
-        print(f"{CACHE_FILE.name}：本次{reason}不更新")
+    if args.no_cache_update:
+        print(f"{CACHE_FILE.name}：本次按参数要求不更新")
     else:
-        successful_targets = sum(
-            1
-            for target_results, target_failure in zip(ordered_results, ordered_failures)
-            if target_results and target_failure is None
-        )
+        successful_targets = len({(item.name, item.url) for item in results})
         total_targets = len(active_targets)
         success_rate = successful_targets * 100 / total_targets if total_targets else 0.0
         if not should_update_cache_for_success_rate(total_targets, successful_targets):

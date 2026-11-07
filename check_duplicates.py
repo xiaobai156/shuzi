@@ -781,6 +781,26 @@ def cache_site_key(name: str, url: str) -> tuple[str, str]:
     return ("", normalized_url) if normalized_url else (normalized_name, "")
 
 
+def enabled_cache_keys(targets: list[dict]) -> set[tuple[str, str]]:
+    return {
+        cache_site_key(target_name(target), str(target.get("url") or ""))
+        for target in targets
+    }
+
+
+def filter_enabled_cache_entries(items: list[dict], keys: set[tuple[str, str]]) -> list[dict]:
+    """只保留启用站点条目：停用站点的历史不参与判重，也不该算异常。
+
+    validate_cache_data 和 load_cache_state 必须共用这一个口径，
+    否则一处过滤、一处漏掉，判重报告就会漂。
+    """
+    return [
+        item
+        for item in items
+        if cache_site_key(str(item.get("name") or ""), str(item.get("url") or "")) in keys
+    ]
+
+
 def validate_cache_data(
     data: object,
     path: Path,
@@ -938,10 +958,7 @@ def validate_cache_data(
             for site in data.get("sites", [])
             if isinstance(site, dict)
         }
-        enabled_sites = {
-            cache_site_key(target_name(target), str(target.get("url") or ""))
-            for target in targets
-        }
+        enabled_sites = enabled_cache_keys(targets)
         present_sites = available_sites | failure_sites
         missing = [
             target_name(target)
@@ -958,7 +975,22 @@ def validate_cache_data(
             in unexpected_sites
         })
         if unexpected:
-            raise ValueError(f"缓存文件包含未启用目标：{', '.join(unexpected)}")
+            # 已停用/已移除站点的历史条目不再参与判重（规范：disabled 不参加判重），
+            # 只跳过并提示；不能因为改过一次配置就把整份缓存判死。
+            # 两种情况要分开说：同名但换了域名（旧地址条目），和根本没有目标的条目。
+            running_names = {target_name(target) for target in targets}
+            old_address = [name for name in unexpected if name in running_names]
+            no_target = [name for name in unexpected if name not in running_names]
+            parts = []
+            if old_address:
+                parts.append(f"旧地址条目 {len(old_address)} 个（{', '.join(old_address)}）")
+            if no_target:
+                parts.append(f"无对应目标 {len(no_target)} 个（{', '.join(no_target)}）")
+            print(
+                f"提示：缓存中 {len(unexpected)} 个条目不参与判重：{'；'.join(parts)}"
+            )
+            records = filter_enabled_cache_entries(records, enabled_sites)
+            failure_records = filter_enabled_cache_entries(failure_records, enabled_sites)
         for target in targets:
             site = cache_site_key(target_name(target), str(target.get("url") or ""))
             cached_contract = cached_contracts.get(site, "")
@@ -1024,13 +1056,20 @@ def load_cache_state(
                 url=str(item.get("url") or ""),
             )
         )
+    cached_failures = failures_from_cache_document(data)
+    if targets is not None:
+        # 与 validate_cache_data 共用同一口径：已停用站点的历史失败不再算异常，
+        # 否则改过配置后整份缓存都会被判成“抓取/识别异常”。
+        cached_failures = filter_enabled_cache_entries(
+            cached_failures, enabled_cache_keys(targets)
+        )
     problems = [
         CrawlProblem(
             str(item.get("name") or ""),
             str(item.get("url") or ""),
             f"{issue_key(item.get('issue', ''))}期缓存失败：{item.get('reason', '')}",
         )
-        for item in failures_from_cache_document(data)
+        for item in cached_failures
     ]
     return loaded, problems
 

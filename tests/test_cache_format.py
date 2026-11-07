@@ -3,7 +3,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from check_duplicates import validate_cache_data
+from check_duplicates import load_cache_state, validate_cache_data
 
 from kill_numbers.infrastructure.cache_format import (
     build_cache_document,
@@ -330,3 +330,65 @@ def test_cache_validation_rejects_success_and_failure_for_same_site_issue(tmp_pa
 
     with pytest.raises(ValueError, match="同时存在成功号码和失败状态"):
         validate_cache_data(data, tmp_path / "cache.json", 10, [target])
+
+
+def test_disabled_site_history_is_skipped_instead_of_rejecting_cache(tmp_path):
+    """停用站点的旧条目历史不能把整份 --from-cache 判死。"""
+    enabled = {"name": "在跑站点", "url": "https://a.test/1", "region": "top"}
+    archived = {"name": "已停用站点", "url": "https://b.test/2", "region": "bottom"}
+    data = build_cache_document(
+        [
+            {
+                "name": "在跑站点",
+                "url": enabled["url"],
+                "issue": "225",
+                "numbers": "01,02,03,04",
+            },
+            {
+                "name": "已停用站点",
+                "url": archived["url"],
+                "issue": "225",
+                "numbers": "05,06,07,08",
+            },
+        ],
+        [
+            {
+                "name": "已停用站点",
+                "url": archived["url"],
+                "issue": "226",
+                "status": "failed",
+                "reason": "页面无当期",
+            }
+        ],
+        10,
+        targets=[enabled, archived],
+        updated_at="2026-11-06T20:00:00",
+    )
+    path = tmp_path / "cache.json"
+    path.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
+
+    loaded = validate_cache_data(data, path, 10, [enabled])
+    assert [item["name"] for item in loaded] == ["在跑站点"]
+
+    kept, problems = load_cache_state(path, 10, [enabled])
+    assert [item.name for item in kept] == ["在跑站点"]
+    assert problems == []
+
+
+def test_cache_validation_still_requires_every_enabled_target(tmp_path):
+    enabled = {"name": "在跑站点", "url": "https://a.test/1", "region": "top"}
+    data = build_cache_document(
+        [{"name": "在跑站点", "url": enabled["url"], "issue": "225", "numbers": "01,02,03,04"}],
+        [],
+        10,
+        targets=[enabled],
+        updated_at="2026-11-06T20:00:00",
+    )
+
+    with pytest.raises(ValueError, match="缺少启用目标"):
+        validate_cache_data(
+            data,
+            tmp_path / "cache.json",
+            10,
+            [{"name": "没缓存站点", "url": "https://c.test/3", "region": "top"}],
+        )
