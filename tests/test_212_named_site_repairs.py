@@ -79,14 +79,21 @@ def liuhe_fixture() -> str:
 
 
 def wind_fixture() -> str:
+    # 真实页面在号码块之后紧跟广告块（★★ 博彩必备★★），再往下是页脚
+    # 「五行对照」表：金/木两行各 10 码，与配置的 count=10 撞车。
+    # 没有 stop_anchor 时这两行会被当成同期候选，触发「候选不唯一」。
     return """精品料
 212期风吹草动[经典绝杀10码]准
 212期:[经典绝杀10码]开:0000准
 14.21.12.44.39.15.45.32.26.25
-211期:[经典绝杀10码]开:马01错
-24.39.10.36.27.49.37.33.01.44
-210期:[经典绝杀10码]开:马49准
-06.32.30.19.23.45.03.05.26.35
+★★ 博彩必备★★
+玩澳门/香港六合彩在哪里投注最安全?站长推荐大发彩票(7808.cc)特码58倍!
+2026年马年五行对照(2月17号开始启用)
+金 04.05.12.13.26.27.34.35.42.43
+木 08.09.16.17.24.25.38.39.46.47
+水 01.14.15.22.23.30.31.44.45
+火 01.02.09.10.23.24.31.32.39.40
+土 06.07.20.21.28.29.36.37
 """
 
 
@@ -185,9 +192,12 @@ def test_fengchuicaodong_uses_the_observed_top_data_order():
     target = copy.deepcopy(target_by_name("风吹草动"))
 
     assert target["region"] == "top"
+    assert target["stop_anchor"] == "★★ 博彩必备★★"
     assert crawler.parse_target_content(wind_fixture(), target, ["212"]) == {
         "212": ["14", "21", "12", "44", "39", "15", "45", "32", "26", "25"]
     }
+    # 相邻期：页脚五行对照表的 10 码不得被当成同期候选
+    assert crawler.parse_target_content(wind_fixture(), target, ["211"]) == {}
 
 
 def test_mingji_accepts_navigation_prefix_and_circled_ten_code():

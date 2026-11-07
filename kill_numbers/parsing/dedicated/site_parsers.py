@@ -13,7 +13,12 @@ from kill_numbers.parsing.common import (
     valid_number,
 )
 from kill_numbers.parsing.diagnostics import detect_available_issues
-from kill_numbers.text_utils import html_to_text, normalize_issue, normalize_keyword
+from kill_numbers.text_utils import (
+    html_to_text,
+    normalize_issue,
+    normalize_keyword,
+    unique_keep_order,
+)
 
 
 def _configured_candidate_window(target: dict, label: str) -> int:
@@ -1296,6 +1301,12 @@ def identity_article_bottom_10_candidates(
     page_text = normalize_identity_article_current_placeholder(text, target)
     lines = [line.strip() for line in page_text.splitlines() if line.strip()]
     normalized_identity = normalize_keyword(identity)
+    # 行标识锚点：作者身份仍是 article_identity（决定文章归属），但数据行可能由
+    # 同文章内另一署名发布（例如「勤能补拙」文章尾部改写为《横财发家》的十码行）。
+    # 定位规则：优先按 row_anchor；该行没有 row_anchor 就退回作者署名，兼容改名
+    # 之前的历史期；同一行两者同时出现说明来源不明，立刻停止该行避免抓错。
+    row_anchor = str(target.get("row_anchor") or "").strip()
+    normalized_row_anchor = normalize_keyword(row_anchor) if row_anchor else ""
     header_lines = lines[:20]
     if not any(
         normalize_keyword(line) == normalized_identity
@@ -1313,12 +1324,26 @@ def identity_article_bottom_10_candidates(
         if str(issue).strip()
     }
     skip_historical_duplicate_rows = target.get("skip_historical_duplicate_rows") is True
-    rows: list[tuple[str, list[list[str]], int, bool]] = []
+    # (期数, 号码组, 位置, 有重复, 两署名并存)
+    rows: list[tuple[str, list[list[str]], int, bool, bool]] = []
     for match in all_issue_segment_matches(page_text):
         segment = match.group(0)
         compact = normalize_keyword(segment)
+        row_position = compact.find(normalized_row_anchor) if normalized_row_anchor else -1
         identity_position = compact.find(normalized_identity)
-        if identity_position < 0 or identity_position > 40 or not _contains_identity_ten_code(segment):
+        both_signatures = (
+            bool(normalized_row_anchor)
+            and normalized_row_anchor != normalized_identity
+            and row_position >= 0
+            and identity_position >= 0
+        )
+        if both_signatures:
+            # 历史行里一条歧义不应把当期一起拖死，所以这里只登记，
+            # 等窗口选完、只对真正会用到的行拒绝。
+            rows.append((normalize_issue(match.group(1)), [], match.start(), False, True))
+            continue
+        anchor_position = row_position if row_position >= 0 else identity_position
+        if anchor_position < 0 or anchor_position > 40 or not _contains_identity_ten_code(segment):
             continue
         groups: list[list[str]] = []
         for numbers in find_number_groups(segment):
@@ -1332,20 +1357,41 @@ def identity_article_bottom_10_candidates(
                 groups,
                 match.start(),
                 any(has_duplicate_numbers(numbers) for numbers in groups),
+                False,
             )
         )
 
     window = _configured_candidate_window(target, f"{identity}专属文章尾部")
-    window_rows = rows
+    # 歧义行只参与判定、不占窗口名额：否则它会把窗口里最老的一条有效行挤出去，
+    # 那一期就会被误报成“没有找到指定期数”。
+    valid_rows = [row for row in rows if not row[4]]
+    window_rows = valid_rows
     if skip_historical_duplicate_rows:
         window_rows = [
             row
-            for row in rows
+            for row in valid_rows
             if not row[3] or row[0] in requested_issue_set
         ]
     selected = window_rows[-window:]
+    boundary = selected[0][2] if selected else None
+    ambiguous_issues = unique_keep_order(
+        [
+            row[0]
+            for row in rows
+            if row[4]
+            and (
+                row[0] in requested_issue_set
+                or (boundary is not None and row[2] >= boundary)
+            )
+        ]
+    )
+    if ambiguous_issues:
+        raise ValueError(
+            f"{','.join(ambiguous_issues)}期 同一行同时出现行标识{row_anchor}"
+            f"与作者署名{identity}，已停止输出避免抓错"
+        )
     candidates: dict[str, list[list[str]]] = {}
-    for issue, groups, _position, has_duplicate in selected:
+    for issue, groups, _position, has_duplicate, _ambiguous in selected:
         if not groups:
             continue
         if has_duplicate:
