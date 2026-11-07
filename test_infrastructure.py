@@ -127,3 +127,25 @@ def test_remove_stale_file_does_not_hide_delete_failure(tmp_path, monkeypatch):
 
     with pytest.raises(PermissionError, match="文件被占用"):
         remove_stale_file(path)
+
+
+def test_atomic_write_json_uses_lf_so_commits_stay_diffable(tmp_path):
+    """缓存/配置入库文件必须写 LF：Windows 文本模式的 CRLF 会让每次提交整文件重写。"""
+    from kill_numbers.infrastructure.file_store import atomic_write_json
+
+    path = tmp_path / "cache.json"
+    atomic_write_json(path, {"base_period": "311", "sites": []}, trailing_newline=False)
+
+    raw = path.read_bytes()
+    assert b"\r\n" not in raw
+    assert b"\n" in raw
+    assert json.loads(raw.decode("utf-8"))["base_period"] == "311"
+
+
+def test_atomic_write_text_keeps_plain_newlines_roundtrippable(tmp_path):
+    """正式 TXT 走平台默认换行，但读回来必须还原成原来的 \n 分隔内容。"""
+    path = tmp_path / "311期-杀数字-成功.txt"
+    atomic_write_text(path, "01,02 站点\n03,04 站点\n")
+
+    assert path.read_text(encoding="utf-8").split() == ["01,02", "站点", "03,04", "站点"]
+    assert path.read_bytes().endswith(b"\n")

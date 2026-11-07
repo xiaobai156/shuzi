@@ -5,7 +5,14 @@ from pathlib import Path
 from typing import Any
 
 
-def atomic_write_text(path: str | Path, content: str) -> None:
+def atomic_write_text(
+    path: str | Path, content: str, *, newline: str | None = None
+) -> None:
+    """原子写文本。
+
+    newline 沿用 open() 的语义：默认按平台翻译（Windows 下写 CRLF，正式 TXT
+    保持既有换行）；JSON 等入库文件传 "" 强制 LF，避免每次提交出现整文件差异。
+    """
     target = Path(path)
     target.parent.mkdir(parents=True, exist_ok=True)
     temp_path: Path | None = None
@@ -13,6 +20,7 @@ def atomic_write_text(path: str | Path, content: str) -> None:
         with tempfile.NamedTemporaryFile(
             mode="w",
             encoding="utf-8",
+            newline=newline,
             dir=target.parent,
             prefix=f".{target.name}.",
             suffix=".tmp",
@@ -38,4 +46,4 @@ def atomic_write_json(
     trailing_newline: bool = True,
 ) -> None:
     content = json.dumps(value, ensure_ascii=ensure_ascii, indent=indent)
-    atomic_write_text(path, content + ("\n" if trailing_newline else ""))
+    atomic_write_text(path, content + ("\n" if trailing_newline else ""), newline="")
