@@ -1,0 +1,6 @@
+{
+  "name": "一方独霸",
+  "url": "https://ifnkblf.e4kce-krr7o-vuvqhd.work:29411/article/manager/6a74b2812822d465035fff6e?url=scyd",
+  "status": "archived",
+  "reason": "用户指定封存：文章已被站方删除，manager-articles 接口连试 4 次均返回 {\"message\":\"AdminArticle 不存在\",\"statusCode\":404}，文章页面正文仅「Failed to fetch」；站点本身存活（/api/proxy/sites、page-style、customer-service 均 200），但 landing-page-data?url=scyd（3.63MB）的 88 位作者、40 篇文章中既无「一方独霸」也无文章 ID 6a74b2812822d465035fff6e，且无任何文章延续其 312 期号码序列，判定为撤稿而非改名，313期起无法抓取"
+}

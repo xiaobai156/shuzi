@@ -1394,7 +1394,9 @@
     "name": "陌然浅笑",
     "count": 10,
     "region": "bottom",
-    "anchor": "陌然浅笑"
+    "anchor": "陌然浅笑",
+    "disabled": true,
+    "archive_tag": "用户指定封存"
   },
   {
     "url": "https://pgyzulb.iwnn7-gyyip-pnpfqv.work:29477/article/admin/6a394f30018539c611cb63f0?url=bflc",
@@ -2818,7 +2820,9 @@
     "anchor": "一方独霸",
     "article_identity": "一方独霸",
     "issue_position_window": 10,
-    "special_parser": "identity_article_bottom_10"
+    "special_parser": "identity_article_bottom_10",
+    "disabled": true,
+    "archive_tag": "用户指定封存"
   },
   {
     "url": "https://8818.www71986a.com/read.php?tid=667",
