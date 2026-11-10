@@ -44,3 +44,18 @@ def test_title_accepts_all_ten_markers(marker):
     match = _identity_title_match(lines, "澳门大佬")
     assert match is not None
     assert match.group(1) == "293"
+
+
+def test_title_with_identity_suffix_is_accepted():
+    # 312 期起「独占鳌头」「可歌可泣」把署名追加到标题末尾，
+    # 标题行因此含站名；署名在期号之后属于真正的标题，必须接受。
+    lines = ["作者:独占鳌头", "312期：【绝杀十码】〓 独占鳌头"]
+    match = _identity_title_match(lines, "独占鳌头")
+    assert match is not None
+    assert match.group(1) == "312"
+
+
+def test_title_with_identity_before_issue_marker_is_still_skipped():
+    # 站名出现在期号之前的是页头/作者行，仍不能当标题。
+    lines = ["独占鳌头 312期：【绝杀十码】"]
+    assert _identity_title_match(lines, "独占鳌头") is None

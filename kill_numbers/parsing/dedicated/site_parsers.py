@@ -1143,17 +1143,24 @@ def _contains_identity_ten_code(text: str) -> bool:
 
 
 def _identity_title_match(lines: list[str], identity: str) -> re.Match | None:
+    normalized_identity = normalize_keyword(identity)
     for line in lines[:20]:
-        if normalize_keyword(identity) in normalize_keyword(line):
-            continue
         # 站方标题可能写「293期：…」也可能写「293：【…】」（漏掉「期」字），
         # 期号后允许「期」或紧跟冒号，其余契约不变。
         match = re.search(
             r"(?<!\d)0?(\d{1,3})\s*(?:期|[:：]).{0,60}绝杀\s*(?:十|10|⑩)\s*码",
             line,
         )
-        if match:
-            return match
+        if not match:
+            continue
+        # 站名出现在期号之前说明这是页头或作者行（如「独占鳌头 312期：…」），
+        # 不能当标题；但站方从 312 期起把署名追加到标题末尾
+        # （「312期：【绝杀十码】〓 独占鳌头」），这类仍是真正的标题行。
+        if normalized_identity and normalized_identity in normalize_keyword(
+            line[: match.start()]
+        ):
+            continue
+        return match
     return None
 
 
