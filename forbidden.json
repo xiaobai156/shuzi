@@ -266,6 +266,18 @@
       "url": "https://pgyzulb.iwnn7-gyyip-pnpfqv.work:29477/article/admin/6a153f44d9d9fc2cea5241a3?url=bflc",
       "status": "archived",
       "reason": "用户指定封存：文章已被站方删除，文章页正文仅「Failed to fetch」，页面自身请求的 /api/proxy/manager-articles/6a153f44d9d9fc2cea5241a3 返回 {\"message\":\"AdminArticle 不存在\",\"statusCode\":404}；站点存活（同一主机同一子站 bflc 的「得失鸡虫」314 期正常抓取），但 landing-page-data?url=bflc（3.9MB，86 个子站、83 位作者的 314 期文章）中既无「陌然浅笑」也无文章 ID 6a153f44d9d9fc2cea5241a3，判定为撤稿，314期无法抓取"
+    },
+    {
+      "name": "得失鸡虫",
+      "url": "https://pgyzulb.iwnn7-gyyip-pnpfqv.work:29477/article/admin/6a394f30018539c611cb63f0?url=bflc",
+      "status": "archived",
+      "reason": "用户指定封存：文章已被站方删除，文章页正文仅「Failed to fetch」（45 字符），页面自身请求的 /api/proxy/manager-articles/6a394f30018539c611cb63f0 返回 {\"message\":\"AdminArticle 不存在\",\"error\":\"Not Found\",\"statusCode\":404}；站点存活（同一主机同一子站 bflc 的「原任马行」接口返回 200 / 212944 字节，316 期正常抓取），但 landing-page-data?url=bflc（3.89MB）作者列表中无「得失鸡虫」（明文 0 次、base64 0 次），文章 ID 6a394f30018539c611cb63f0 出现 0 次，判定为撤稿，316期无法抓取"
+    },
+    {
+      "name": "勤能补拙",
+      "url": "https://wigrzse.3acpt-tc9xa-kzxasm.xyz:29444/article/manager/6a2d9c70d164c1deb6244746?url=pg",
+      "status": "archived",
+      "reason": "用户指定封存：文章已被站方删除，文章页正文仅「Failed to fetch」（45 字符），页面自身请求的 /api/proxy/manager-articles/6a2d9c70d164c1deb6244746 返回 {\"message\":\"AdminArticle 不存在\",\"error\":\"Not Found\",\"statusCode\":404}；站点存活（同一主机「横财发家」接口返回 200 / 133710 字节，316 期正常抓取），但 landing-page-data?url=pg（10.93MB、43 篇文章）中「勤能补拙」明文 0 次、base64 形式 0 次，文章 ID 6a2d9c70d164c1deb6244746 出现 0 次，判定为撤稿，316期无法抓取"
     }
   ]
 }

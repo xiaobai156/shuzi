@@ -1,0 +1,6 @@
+{
+  "name": "勤能补拙",
+  "url": "https://wigrzse.3acpt-tc9xa-kzxasm.xyz:29444/article/manager/6a2d9c70d164c1deb6244746?url=pg",
+  "status": "archived",
+  "reason": "用户指定封存：文章已被站方删除，文章页正文仅「Failed to fetch」（45 字符），页面自身请求的 /api/proxy/manager-articles/6a2d9c70d164c1deb6244746 返回 {\"message\":\"AdminArticle 不存在\",\"error\":\"Not Found\",\"statusCode\":404}；站点存活（同一主机「横财发家」接口返回 200 / 133710 字节，316 期正常抓取），但 landing-page-data?url=pg（10.93MB、43 篇文章）中「勤能补拙」明文 0 次、base64 形式 0 次，文章 ID 6a2d9c70d164c1deb6244746 出现 0 次，判定为撤稿，316期无法抓取"
+}

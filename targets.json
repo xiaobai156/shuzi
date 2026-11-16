@@ -1403,7 +1403,9 @@
     "name": "得失鸡虫",
     "count": 10,
     "region": "bottom",
-    "anchor": "得失鸡虫"
+    "anchor": "得失鸡虫",
+    "disabled": true,
+    "archive_tag": "用户指定封存"
   },
   {
     "url": "https://uqdccnri.oy2bh-swrfr-gvzxkk.work:29499/article/admin/6a0322b356a1d26b7774455e?url=lcz",
@@ -2772,7 +2774,9 @@
       "missing_history_issues": [],
       "cache_conflict": "私房一肖 218期"
     },
-    "row_anchor": "横财发家"
+    "row_anchor": "横财发家",
+    "disabled": true,
+    "archive_tag": "用户指定封存"
   },
   {
     "url": "https://i97lk4jb16.333741bbs1.shop/bbs/topic.php?id=2788",

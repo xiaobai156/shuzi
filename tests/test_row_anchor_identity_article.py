@@ -4,7 +4,12 @@ import crawler
 
 
 def target_by_name(name: str) -> dict:
-    return next(target for target in crawler.load_targets() if target.get("name") == name)
+    """按名称取配置，包含已封存(disabled)条目：该站封存后迁移用例仍需覆盖解析契约。"""
+    return next(
+        target
+        for target in crawler.read_target_data(crawler.TARGETS_FILE)
+        if target.get("name") == name
+    )
 
 
 def article_fixture(issue: str = "310") -> str:
