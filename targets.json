@@ -2837,7 +2837,9 @@
     "count": 10,
     "region": "bottom",
     "anchor": "怪咖小生",
-    "issue_position_window": 10
+    "issue_position_window": 10,
+    "disabled": true,
+    "archive_tag": "用户指定封存"
   },
   {
     "url": "https://hl.www25195a.com/read.php?tid=678",

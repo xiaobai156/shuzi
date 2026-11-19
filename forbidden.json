@@ -278,6 +278,12 @@
       "url": "https://wigrzse.3acpt-tc9xa-kzxasm.xyz:29444/article/manager/6a2d9c70d164c1deb6244746?url=pg",
       "status": "archived",
       "reason": "用户指定封存：文章已被站方删除，文章页正文仅「Failed to fetch」（45 字符），页面自身请求的 /api/proxy/manager-articles/6a2d9c70d164c1deb6244746 返回 {\"message\":\"AdminArticle 不存在\",\"error\":\"Not Found\",\"statusCode\":404}；站点存活（同一主机「横财发家」接口返回 200 / 133710 字节，316 期正常抓取），但 landing-page-data?url=pg（10.93MB、43 篇文章）中「勤能补拙」明文 0 次、base64 形式 0 次，文章 ID 6a2d9c70d164c1deb6244746 出现 0 次，判定为撤稿，316期无法抓取"
+    },
+    {
+      "name": "怪咖小生",
+      "url": "https://8818.www71986a.com/read.php?tid=667",
+      "status": "archived",
+      "reason": "用户指定封存：帖子已被站方删除/下架。read.php?tid=667 返回「您没有登录或者没有权限访问此页面……链接无效，可能链接不完整，或数据已被删除」；同站首页正常（61131 字节），tid=668/670/672 等相邻帖可读，仅 667 被拦；站点首页作者列表 77 位中已无「怪咖小生」；同站群其余 9 个论坛（8818.www19753a.com、8818.www73261a.com、18118.73829.com、hl.90216a.com、hl.www25195a.com、www.930600.com 等）作者列表中均 0 命中。323 期无法抓取（322 期缓存仍为 06,07,16,28,30,31,36,39,47,48）。"
     }
   ]
 }
